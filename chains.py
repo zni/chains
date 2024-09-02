@@ -6,6 +6,9 @@ import time
 import bitarray
 import bitarray.util
 
+class EndOfExecution(Exception):
+    pass
+
 class IllegalAddressingMode(Exception):
     pass
 
@@ -115,7 +118,7 @@ class FlagRegister:
 class RAM:
     def __init__(self, size=0xFFFF):
         self.store = []
-        for _ in range(size):
+        for _ in range(size + 1):
             self.store.append(0)
 
     def read(self, loc):
@@ -1309,11 +1312,11 @@ class MPU:
         data = self._ram.read(addr)
         return (data, addr)
 
-    def _dump(self):
-        print(f"PC: {self._pc}")
-        print(f"A: 0x{self._a:04x}")
-        print(f"X: 0x{self._x:04x}")
-        print(f"Y: 0x{self._y:04x}")
+    def dump(self):
+        print(f"PC: {self._pc.reg}")
+        print(f" A: 0x{self._a:04x}")
+        print(f" X: 0x{self._x:04x}")
+        print(f" Y: 0x{self._y:04x}")
 
     def _execute(self):
         instruction = self._data_fetch()
@@ -1324,38 +1327,39 @@ class MPU:
         (op, addr_mode) = table_block[entry]
 
         if op is None:
-            raise RuntimeError("Invalid operation")
+            raise EndOfExecution()
 
         op(addr_mode)
 
     def load(self, program):
         with open(program, 'rb') as binary_file:
-            buffer : bytes = binary_file.read1(size=1)
+            buffer : bytes = binary_file.read1(1)
             mem_loc = 0
-            while buffer is not None:
-                self._ram.write(mem_loc, int(buffer) & 0xFF)
-                buffer = binary_file.read1(size=1)
+            while buffer:
+                self._ram.write(mem_loc, int.from_bytes(buffer, byteorder='big') & 0xFF)
+                buffer = binary_file.read1(1)
                 mem_loc += 1
 
     def run(self):
         execution_cycle = 0
-        while execution_cycle < 0xFFFF:
-            pre = time.time()
-            self._execute()
-            post = time.time()
-            elapsed = post - pre
-            if MPU.CYCLE > elapsed:
-                time.sleep(MPU.CYCLE - elapsed)
-            execution_cycle += 1
-
-        return execution_cycle
+        try:
+            while True:
+                pre = time.time()
+                self._execute()
+                post = time.time()
+                elapsed = post - pre
+                if MPU.CYCLE > elapsed:
+                    time.sleep(MPU.CYCLE - elapsed)
+                execution_cycle += 1
+        except EndOfExecution:
+            return execution_cycle
 
 def main():
     (opts, _) = getopt.getopt(sys.argv[1:], 'f:')
 
     program = None
     for (opt, arg) in opts:
-        if opt == 'f':
+        if opt == '-f':
             program = arg
 
     if program is None:
@@ -1367,6 +1371,7 @@ def main():
     cycles = c.run()
     t1 = time.time()
     print(f'Performed {cycles} execution cycles in {t1 - t0:.08f} seconds')
+    c.dump()
 
 if __name__ == '__main__':
     main()
