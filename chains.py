@@ -115,7 +115,7 @@ class FlagRegister:
 class RAM:
     def __init__(self, size=0xFFFF):
         self.store = []
-        for n in range(size):
+        for _ in range(size):
             self.store.append(0)
 
     def read(self, loc):
@@ -665,21 +665,21 @@ class MPU:
 
     def _cmp(self, mode: Mode):
         if mode == Mode.ABS:
-            (data, addr) = self._mode_abs()
+            (data, _) = self._mode_abs()
         elif mode == Mode.ZP:
-            (data, addr) = self._mode_zp()
+            (data, _) = self._mode_zp()
         elif mode == Mode.IMM:
             data = self._data_fetch
         elif mode == Mode.ABSX:
-            (data, addr) = self._mode_absx()
+            (data, _) = self._mode_absx()
         elif mode == Mode.ABSY:
-            (data, addr) = self._mode_absy()
+            (data, _) = self._mode_absy()
         elif mode == Mode.ZPIX:
-            (data, addr) = self._mode_zpix()
+            (data, _) = self._mode_zpix()
         elif mode == Mode.ZPIY:
-            (data, addr) = self._mode_zpiy()
+            (data, _) = self._mode_zpiy()
         elif mode == Mode.ZPX:
-            (data, addr) = self._mode_zpx()
+            (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"CMP {mode.name}")
 
@@ -701,9 +701,9 @@ class MPU:
 
     def _cpx(self, mode: Mode):
         if mode == Mode.ABS:
-            (data, addr) = self._mode_abs()
+            (data, _) = self._mode_abs()
         elif mode == Mode.ZP:
-            (data, addr) = self._mode_zp()
+            (data, _) = self._mode_zp()
         elif mode == Mode.IMM:
             data = self._data_fetch()
         else:
@@ -727,9 +727,9 @@ class MPU:
 
     def _cpy(self, mode: Mode):
         if mode == Mode.ABS:
-            (data, addr) = self._mode_abs()
+            (data, _) = self._mode_abs()
         elif mode == Mode.ZP:
-            (data, addr) = self._mode_zp()
+            (data, _) = self._mode_zp()
         elif mode == Mode.IMM:
             data = self._data_fetch()
         else:
@@ -789,21 +789,21 @@ class MPU:
 
     def _eor(self, mode: Mode):
         if mode == Mode.ABS:
-            (data, addr) = self._mode_abs()
+            (data, _) = self._mode_abs()
         elif mode == Mode.ZP:
-            (data, addr) = self._mode_zp()
+            (data, _) = self._mode_zp()
         elif mode == Mode.IMM:
             data = self._data_fetch()
         elif mode == Mode.ABSX:
-            (data, addr) = self._mode_absx()
+            (data, _) = self._mode_absx()
         elif mode == Mode.ABSY:
-            (data, addr) = self._mode_absy()
+            (data, _) = self._mode_absy()
         elif mode == Mode.ZPIX:
-            (data, addr) = self._mode_zpix()
+            (data, _) = self._mode_zpix()
         elif mode == Mode.ZPIY:
-            (data, addr) = self._mode_zpiy()
+            (data, _) = self._mode_zpiy()
         elif mode == Mode.ZPX:
-            (data, addr) = self._mode_zpx()
+            (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"EOR {mode.name}")
 
@@ -1329,12 +1329,12 @@ class MPU:
         op(addr_mode)
 
     def load(self, program):
-        with open(program, 'rb') as bin:
-            buffer : bytes = bin.read1(size=1)
+        with open(program, 'rb') as binary_file:
+            buffer : bytes = binary_file.read1(size=1)
             mem_loc = 0
             while buffer is not None:
                 self._ram.write(mem_loc, int(buffer) & 0xFF)
-                buffer = bin.read1(size=1)
+                buffer = binary_file.read1(size=1)
                 mem_loc += 1
 
     def run(self):
