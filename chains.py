@@ -1,4 +1,6 @@
 import enum
+import getopt
+import sys
 import time
 
 import bitarray
@@ -111,7 +113,7 @@ class FlagRegister:
         return bitarray.util.ba2int(b, signed=False)
 
 class RAM:
-    def __init__(self, size=256):
+    def __init__(self, size=0xFFFF):
         self.store = []
         for n in range(size):
             self.store.append(0)
@@ -1326,27 +1328,45 @@ class MPU:
 
         op(addr_mode)
 
+    def load(self, program):
+        with open(program, 'rb') as bin:
+            buffer : bytes = bin.read1(size=1)
+            mem_loc = 0
+            while buffer is not None:
+                self._ram.write(mem_loc, int(buffer) & 0xFF)
+                buffer = bin.read1(size=1)
+                mem_loc += 1
+
     def run(self):
-        cmds = [
-            0xA0, 0x01,
-            0x69, 0x0F,
-            0x69, 0x0F
-        ]
-        for (loc, byte) in enumerate(cmds):
-            self._ram.write(loc, byte)
-
-
-        for _ in range(3):
+        execution_cycle = 0
+        while execution_cycle < 0xFFFF:
             pre = time.time()
             self._execute()
             post = time.time()
             elapsed = post - pre
             if MPU.CYCLE > elapsed:
                 time.sleep(MPU.CYCLE - elapsed)
+            execution_cycle += 1
+
+        return execution_cycle
+
+def main():
+    (opts, _) = getopt.getopt(sys.argv[1:], 'f:')
+
+    program = None
+    for (opt, arg) in opts:
+        if opt == 'f':
+            program = arg
+
+    if program is None:
+        raise RuntimeError("No program specified")
+
+    c = MPU()
+    c.load(program)
+    t0 = time.time()
+    cycles = c.run()
+    t1 = time.time()
+    print(f'Performed {cycles} execution cycles in {t1 - t0:.08f} seconds')
 
 if __name__ == '__main__':
-    c = MPU()
-    t0 = time.time()
-    c.run()
-    t1 = time.time()
-    print(f'Performed 3 execution cycles in {t1 - t0:.08f} seconds')
+    main()
