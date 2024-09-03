@@ -4,7 +4,7 @@ class RAM:
         for _ in range(size + 1):
             self.store.append(0)
 
-    def read(self, loc):
+    def read(self, loc) -> int:
         try:
             return self.store[loc]
         except IndexError as e:

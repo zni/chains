@@ -2,11 +2,11 @@ import time
 
 from .modes import AddressingMode
 
-from ..exc.core import IllegalAddressingMode, EndOfExecution
-from ..memory.ram import RAM
-from ..memory.stack import Stack
-from ..registers.pc import ProgramCounter
-from ..registers.status import FlagRegister
+from exc.core import IllegalAddressingMode, EndOfExecution
+from memory.ram import RAM
+from memory.stack import Stack
+from registers.pc import ProgramCounter
+from registers.status import FlagRegister
 
 class MPU:
 
@@ -414,7 +414,7 @@ class MPU:
 
         if self._flags.carry == 0:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -424,7 +424,7 @@ class MPU:
 
         if self._flags.carry == 1:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -434,12 +434,26 @@ class MPU:
 
         if self._flags.zero == 1:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
     def _bit(self, mode: AddressingMode):
-        pass
+        if mode == mode.ABS:
+            (data, addr) = self._mode_abs()
+        elif mode == mode.ZP:
+            (data, addr) = self._mode_zp()
+        else:
+            raise IllegalAddressingMode(f"BIT {mode.name}")
+
+        result = self._a & data
+        if result == 0:
+            self._flags.zero = 1
+        else:
+            self._flags.zero = 0
+
+        self._flags.overflow = (result & 0x40) >> 6
+        self._flags.sign = (result & 0x80) >> 7
 
     def _bmi(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
@@ -447,7 +461,7 @@ class MPU:
 
         if self._flags.sign == 1:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -457,7 +471,7 @@ class MPU:
 
         if self._flags.zero == 0:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -467,7 +481,7 @@ class MPU:
 
         if self._flags.sign == 0:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -490,7 +504,7 @@ class MPU:
 
         if self._flags.overflow == 0:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -500,7 +514,7 @@ class MPU:
 
         if self._flags.overflow == 1:
             displacement = self._ram.read(self._pc.reg)
-            self._pc.displace_pc(displacement)
+            self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -1174,13 +1188,20 @@ class MPU:
         data = self._ram.read(addr)
         return (data, addr)
 
+    def _to_signed(self, n) -> int:
+        if n & 0x80:
+            return ~0 | n
+        else:
+            return n
+
     def dump(self):
-        print(f"PC: {self._pc.reg:04x}")
+        print(f"P : 0x{self._flags.to_int():04x}")
+        print(f"PC: 0x{self._pc.reg:04x}")
         print(f" A: 0x{self._a:04x}")
         print(f" X: 0x{self._x:04x}")
         print(f" Y: 0x{self._y:04x}")
 
-    def _execute(self):
+    def _execute(self, trace=False):
         instruction = self._data_fetch()
 
         table = (instruction & 0xF0) >> 4
@@ -1191,23 +1212,39 @@ class MPU:
         if op is None:
             raise EndOfExecution()
 
+        if trace:
+            print(op.__qualname__)
+
         op(addr_mode)
 
-    def load(self, program):
+    def load(self, program, prg_size=0, start_load=0x8000):
         with open(program, 'rb') as binary_file:
+            binary_file.seek(16)
             buffer : bytes = binary_file.read1(1)
-            mem_loc = 0
-            while buffer:
+            mem_loc = start_load
+            prg_read_size = 1
+            while buffer and prg_read_size < prg_size:
                 self._ram.write(mem_loc, int.from_bytes(buffer, byteorder='big') & 0xFF)
                 buffer = binary_file.read1(1)
                 mem_loc += 1
+                prg_read_size += 1
 
-    def run(self):
+    def reset(self):
+        start_lo = self._ram.read(0xFFFC)
+        start_hi = self._ram.read(0xFFFD)
+        start = (start_hi << 8) | (start_lo)
+        print(f"start: {start:04x}")
+        self._pc.reg = start
+        self._a = 0
+        self._x = 0
+        self._y = 0
+
+    def run(self, trace=False):
         execution_cycle = 0
         try:
             while True:
                 pre = time.time()
-                self._execute()
+                self._execute(trace=trace)
                 post = time.time()
                 elapsed = post - pre
                 if MPU.CYCLE > elapsed:
