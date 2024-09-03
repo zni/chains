@@ -1,150 +1,12 @@
-import enum
-import getopt
-import sys
 import time
 
-import bitarray
-import bitarray.util
+from .modes import AddressingMode
 
-class EndOfExecution(Exception):
-    pass
-
-class IllegalAddressingMode(Exception):
-    pass
-
-class Mode(enum.Enum):
-    ABS = 0
-    ABSIX = 1
-    ABSX = 2
-    ABSY = 3
-    ABSI = 4
-    ACC = 5
-    IMM = 6
-    IMPLIED = 7
-    PCR = 8
-    STACK = 9
-    ZP = 10
-    ZPIX = 11
-    ZPX = 12
-    ZPY = 13
-    ZPI = 14
-    ZPIY = 15
-    REL = 16
-    IND = 17
-
-class ProgramCounter:
-    def __init__(self, start=0):
-        self.reg = start
-
-    def pc_lo(self) -> int:
-        return (0x00FF & self.reg)
-
-    def pc_hi(self) -> int:
-        return (0xFF00 & self.reg) >> 8
-
-    def set_pc_lo(self, pc_lo):
-        self.reg |= pc_lo
-
-    def set_pc_hi(self, pc_hi):
-        self.reg = (pc_hi << 8) | self.reg
-        self.reg &= 0xFFFF
-
-    def advance_pc(self):
-        self.reg = (self.reg + 1) % 0xFFFF
-
-    def displace_pc(self, displacement):
-        self.reg = (self.reg + displacement) % 0xFFFF
-
-
-
-class FlagRegister:
-    def __init__(self):
-        self.sign = 0
-        self.overflow = 0
-        self.break_ = 0
-        self.decimal = 0
-        self.interrupt = 0
-        self.zero = 0
-        self.carry = 0
-
-    def update_flags(self, val):
-        self.sign = (0x80 & val) >> 7
-        self.overflow = (0x40 & val) >> 6
-        self.break_ = (0x10 & val) >> 4
-        self.decimal = (0x08 & val) >> 3
-        self.interrupt = (0x04 & val) >> 2
-        self.zero = (0x02 & val) >> 1
-        self.carry = 0x01 & val
-
-    def update_sign(self, val):
-        if val & 0x80:
-            self.sign = 1
-        else:
-            self.sign = 0
-
-    def update_zero(self, val):
-        if val == 0:
-            self.zero = 1
-        else:
-            self.zero = 0
-
-    def update_carry(self, val, bit7=True):
-        if bit7:
-            if val & 0x80:
-                self.carry = 1
-            else:
-                self.carry = 0
-        else:
-            if val & 0x01:
-                self.carry = 1
-            else:
-                self.carry = 0
-
-
-    def to_int(self):
-        b = bitarray.bitarray([
-            self.sign,
-            self.overflow,
-            0,
-            self.break_,
-            self.decimal,
-            self.interrupt,
-            self.zero,
-            self.carry
-        ])
-
-        return bitarray.util.ba2int(b, signed=False)
-
-class RAM:
-    def __init__(self, size=0xFFFF):
-        self.store = []
-        for _ in range(size + 1):
-            self.store.append(0)
-
-    def read(self, loc):
-        try:
-            return self.store[loc]
-        except IndexError as e:
-            raise RuntimeError("Out of bounds memory access") from e
-
-    def write(self, loc, data):
-        try:
-            self.store[loc] = data
-        except IndexError as e:
-            raise RuntimeError("Out of bounds memory access") from e
-
-class Stack:
-    def __init__(self, ram: RAM, origin:int=256):
-        self._ram = ram
-        self.sp = origin
-
-    def push(self, data: int):
-        self._ram.write(self.sp, data)
-        self.sp += 1
-
-    def pop(self) -> int:
-        self.sp -= 1
-        return self._ram.read(self.sp)
+from ..exc.core import IllegalAddressingMode, EndOfExecution
+from ..memory.ram import RAM
+from ..memory.stack import Stack
+from ..registers.pc import ProgramCounter
+from ..registers.status import FlagRegister
 
 class MPU:
 
@@ -163,325 +25,325 @@ class MPU:
         self._lookup_table = [
             #0
             [
-                (self._brk, Mode.IMPLIED),
-                (self._ora, Mode.ABSIX),
+                (self._brk, AddressingMode.IMPLIED),
+                (self._ora, AddressingMode.ABSIX),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._ora, Mode.ZP),
-                (self._asl, Mode.ZP),
+                (self._ora, AddressingMode.ZP),
+                (self._asl, AddressingMode.ZP),
                 (None, None),
-                (self._php, Mode.IMPLIED),
-                (self._ora, Mode.IMM),
-                (self._asl, Mode.ACC),
+                (self._php, AddressingMode.IMPLIED),
+                (self._ora, AddressingMode.IMM),
+                (self._asl, AddressingMode.ACC),
                 (None, None),
                 (None, None),
-                (self._ora, Mode.ABS),
-                (self._asl, Mode.ABS),
+                (self._ora, AddressingMode.ABS),
+                (self._asl, AddressingMode.ABS),
                 (None, None)
             ],
             #1
             [
-                (self._bpl, Mode.REL),
-                (self._ora, Mode.ZPIY),
+                (self._bpl, AddressingMode.REL),
+                (self._ora, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._ora, Mode.ZPX),
-                (self._asl, Mode.ZPX),
-                (self._clc, Mode.IMPLIED),
-                (self._ora, Mode.ABSY),
+                (self._ora, AddressingMode.ZPX),
+                (self._asl, AddressingMode.ZPX),
+                (self._clc, AddressingMode.IMPLIED),
+                (self._ora, AddressingMode.ABSY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._ora, Mode.ABSX),
-                (self._asl, Mode.ABSX),
+                (self._ora, AddressingMode.ABSX),
+                (self._asl, AddressingMode.ABSX),
                 (None, None)
             ],
             #2
             [
-                (self._jsr, Mode.ABS),
-                (self._and, Mode.ABSIX),
+                (self._jsr, AddressingMode.ABS),
+                (self._and, AddressingMode.ABSIX),
                 (None, None),
                 (None, None),
-                (self._bit, Mode.ZP),
-                (self._and, Mode.ZP),
-                (self._rol, Mode.ZP),
+                (self._bit, AddressingMode.ZP),
+                (self._and, AddressingMode.ZP),
+                (self._rol, AddressingMode.ZP),
                 (None, None),
-                (self._plp, Mode.IMPLIED),
-                (self._and, Mode.IMM),
-                (self._rol, Mode.ACC),
+                (self._plp, AddressingMode.IMPLIED),
+                (self._and, AddressingMode.IMM),
+                (self._rol, AddressingMode.ACC),
                 (None, None),
-                (self._bit, Mode.ABS),
-                (self._and, Mode.ABS),
-                (self._rol, Mode.ABS),
+                (self._bit, AddressingMode.ABS),
+                (self._and, AddressingMode.ABS),
+                (self._rol, AddressingMode.ABS),
                 (None, None)
             ],
             #3
             [
-                (self._bmi, Mode.REL),
-                (self._and, Mode.ZPIY),
+                (self._bmi, AddressingMode.REL),
+                (self._and, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._and, Mode.ZPX),
-                (self._rol, Mode.ZPX),
+                (self._and, AddressingMode.ZPX),
+                (self._rol, AddressingMode.ZPX),
                 (None, None),
-                (self._sec, Mode.IMPLIED),
-                (self._and, Mode.ABSY),
+                (self._sec, AddressingMode.IMPLIED),
+                (self._and, AddressingMode.ABSY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._and, Mode.ABSX),
-                (self._rol, Mode.ABSX),
+                (self._and, AddressingMode.ABSX),
+                (self._rol, AddressingMode.ABSX),
                 (None, None)
             ],
             #4
             [
-                (self._rti, Mode.IMPLIED),
-                (self._eor, Mode.ABSIX),
+                (self._rti, AddressingMode.IMPLIED),
+                (self._eor, AddressingMode.ABSIX),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._eor, Mode.ZP),
-                (self._lsr, Mode.ZP),
+                (self._eor, AddressingMode.ZP),
+                (self._lsr, AddressingMode.ZP),
                 (None, None),
-                (self._pha, Mode.IMPLIED),
-                (self._eor, Mode.IMM),
-                (self._lsr, Mode.ACC),
+                (self._pha, AddressingMode.IMPLIED),
+                (self._eor, AddressingMode.IMM),
+                (self._lsr, AddressingMode.ACC),
                 (None, None),
-                (self._jmp, Mode.ABS),
-                (self._eor, Mode.ABS),
-                (self._lsr, Mode.ABS),
+                (self._jmp, AddressingMode.ABS),
+                (self._eor, AddressingMode.ABS),
+                (self._lsr, AddressingMode.ABS),
                 (None, None)
             ],
             #5
             [
-                (self._bvc, Mode.REL),
-                (self._eor, Mode.ZPIY),
+                (self._bvc, AddressingMode.REL),
+                (self._eor, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._eor, Mode.ZPX),
-                (self._lsr, Mode.ZPX),
+                (self._eor, AddressingMode.ZPX),
+                (self._lsr, AddressingMode.ZPX),
                 (None, None),
-                (self._cli, Mode.IMPLIED),
-                (self._eor, Mode.ABSY),
+                (self._cli, AddressingMode.IMPLIED),
+                (self._eor, AddressingMode.ABSY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._eor, Mode.ABSX),
-                (self._lsr, Mode.ABSX)
+                (self._eor, AddressingMode.ABSX),
+                (self._lsr, AddressingMode.ABSX)
             ],
             #6
             [
-                (self._rts, Mode.IMPLIED),
-                (self._adc, Mode.ABSIX),
+                (self._rts, AddressingMode.IMPLIED),
+                (self._adc, AddressingMode.ABSIX),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._adc, Mode.ZP),
-                (self._ror, Mode.ZP),
+                (self._adc, AddressingMode.ZP),
+                (self._ror, AddressingMode.ZP),
                 (None, None),
-                (self._pla, Mode.IMPLIED),
-                (self._adc, Mode.IMM),
-                (self._ror, Mode.ACC),
+                (self._pla, AddressingMode.IMPLIED),
+                (self._adc, AddressingMode.IMM),
+                (self._ror, AddressingMode.ACC),
                 (None, None),
-                (self._jmp, Mode.IND),
-                (self._adc, Mode.ABS),
-                (self._ror, Mode.ABS),
+                (self._jmp, AddressingMode.IND),
+                (self._adc, AddressingMode.ABS),
+                (self._ror, AddressingMode.ABS),
                 (None, None),
             ],
             #7
             [
-                (self._bvs, Mode.REL),
-                (self._adc, Mode.ZPIY),
+                (self._bvs, AddressingMode.REL),
+                (self._adc, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._adc, Mode.ZPX),
-                (self._ror, Mode.ZPX),
+                (self._adc, AddressingMode.ZPX),
+                (self._ror, AddressingMode.ZPX),
                 (None, None),
-                (self._sei, Mode.IMPLIED),
-                (self._adc, Mode.ABSY),
+                (self._sei, AddressingMode.IMPLIED),
+                (self._adc, AddressingMode.ABSY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._adc, Mode.ABSX),
-                (self._ror, Mode.ABSX),
+                (self._adc, AddressingMode.ABSX),
+                (self._ror, AddressingMode.ABSX),
                 (None, None)
             ],
             #8
             [
                 (None, None),
-                (self._sta, Mode.ZPIX),
+                (self._sta, AddressingMode.ZPIX),
                 (None, None),
                 (None, None),
-                (self._sty, Mode.ZP),
-                (self._sta, Mode.ZP),
-                (self._stx, Mode.ZP),
+                (self._sty, AddressingMode.ZP),
+                (self._sta, AddressingMode.ZP),
+                (self._stx, AddressingMode.ZP),
                 (None, None),
-                (self._dey, Mode.IMPLIED),
+                (self._dey, AddressingMode.IMPLIED),
                 (None, None),
-                (self._txa, Mode.IMPLIED),
+                (self._txa, AddressingMode.IMPLIED),
                 (None, None),
-                (self._sty, Mode.ABS),
-                (self._sta, Mode.ABS),
-                (self._stx, Mode.ABS),
+                (self._sty, AddressingMode.ABS),
+                (self._sta, AddressingMode.ABS),
+                (self._stx, AddressingMode.ABS),
                 (None, None)
             ],
             #9
             [
-                (self._bcc, Mode.REL),
-                (self._sta, Mode.ZPIY),
+                (self._bcc, AddressingMode.REL),
+                (self._sta, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
-                (self._sty, Mode.ZPX),
-                (self._sta, Mode.ZPX),
-                (self._stx, Mode.ZPY),
+                (self._sty, AddressingMode.ZPX),
+                (self._sta, AddressingMode.ZPX),
+                (self._stx, AddressingMode.ZPY),
                 (None, None),
-                (self._tya, Mode.IMPLIED),
-                (self._sta, Mode.ABSY),
-                (self._txs, Mode.IMPLIED),
+                (self._tya, AddressingMode.IMPLIED),
+                (self._sta, AddressingMode.ABSY),
+                (self._txs, AddressingMode.IMPLIED),
                 (None, None),
                 (None, None),
-                (self._sta, Mode.ABSX),
+                (self._sta, AddressingMode.ABSX),
                 (None, None),
                 (None, None)
             ],
             #A
             [
-                (self._ldy, Mode.IMM),
-                (self._lda, Mode.ZPIX),
-                (self._ldx, Mode.IMM),
+                (self._ldy, AddressingMode.IMM),
+                (self._lda, AddressingMode.ZPIX),
+                (self._ldx, AddressingMode.IMM),
                 (None, None),
-                (self._ldy, Mode.ZP),
-                (self._lda, Mode.ZP),
-                (self._ldx, Mode.ZP),
+                (self._ldy, AddressingMode.ZP),
+                (self._lda, AddressingMode.ZP),
+                (self._ldx, AddressingMode.ZP),
                 (None, None),
-                (self._tay, Mode.IMPLIED),
-                (self._lda, Mode.IMM),
-                (self._tax, Mode.IMPLIED),
+                (self._tay, AddressingMode.IMPLIED),
+                (self._lda, AddressingMode.IMM),
+                (self._tax, AddressingMode.IMPLIED),
                 (None, None),
-                (self._ldy, Mode.ABS),
-                (self._lda, Mode.ABS),
-                (self._ldx, Mode.ABS),
+                (self._ldy, AddressingMode.ABS),
+                (self._lda, AddressingMode.ABS),
+                (self._ldx, AddressingMode.ABS),
                 (None, None)
             ],
             #B
             [
-                (self._bcs, Mode.REL),
-                (self._lda, Mode.ZPIY),
+                (self._bcs, AddressingMode.REL),
+                (self._lda, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
-                (self._ldy, Mode.ZPX),
-                (self._lda, Mode.ZPX),
-                (self._ldx, Mode.ZPY),
+                (self._ldy, AddressingMode.ZPX),
+                (self._lda, AddressingMode.ZPX),
+                (self._ldx, AddressingMode.ZPY),
                 (None, None),
-                (self._clv, Mode.IMPLIED),
-                (self._lda, Mode.ABSY),
-                (self._tsx, Mode.IMPLIED),
+                (self._clv, AddressingMode.IMPLIED),
+                (self._lda, AddressingMode.ABSY),
+                (self._tsx, AddressingMode.IMPLIED),
                 (None, None),
-                (self._ldy, Mode.ABSX),
-                (self._lda, Mode.ABSX),
-                (self._ldx, Mode.ABSY),
+                (self._ldy, AddressingMode.ABSX),
+                (self._lda, AddressingMode.ABSX),
+                (self._ldx, AddressingMode.ABSY),
                 (None, None)
             ],
             #C
             [
-                (self._cpy, Mode.IMM),
-                (self._cmp, Mode.ZPIX),
+                (self._cpy, AddressingMode.IMM),
+                (self._cmp, AddressingMode.ZPIX),
                 (None, None),
                 (None, None),
-                (self._cpy, Mode.ZP),
-                (self._cmp, Mode.ZP),
-                (self._dec, Mode.ZP),
+                (self._cpy, AddressingMode.ZP),
+                (self._cmp, AddressingMode.ZP),
+                (self._dec, AddressingMode.ZP),
                 (None, None),
-                (self._iny, Mode.IMPLIED),
-                (self._cmp, Mode.IMM),
-                (self._dex, Mode.IMPLIED),
+                (self._iny, AddressingMode.IMPLIED),
+                (self._cmp, AddressingMode.IMM),
+                (self._dex, AddressingMode.IMPLIED),
                 (None, None),
-                (self._cpy, Mode.ABS),
-                (self._cmp, Mode.ABS),
-                (self._dec, Mode.ABS),
+                (self._cpy, AddressingMode.ABS),
+                (self._cmp, AddressingMode.ABS),
+                (self._dec, AddressingMode.ABS),
                 (None, None)
             ],
             #D
             [
-                (self._bne, Mode.REL),
-                (self._cmp, Mode.ZPIY),
+                (self._bne, AddressingMode.REL),
+                (self._cmp, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._cmp, Mode.ZPX),
-                (self._dec, Mode.ZPX),
+                (self._cmp, AddressingMode.ZPX),
+                (self._dec, AddressingMode.ZPX),
                 (None, None),
-                (self._cld, Mode.IMPLIED),
-                (self._cmp, Mode.ABSY),
+                (self._cld, AddressingMode.IMPLIED),
+                (self._cmp, AddressingMode.ABSY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._cmp, Mode.ABSX),
-                (self._dec, Mode.ABSX),
+                (self._cmp, AddressingMode.ABSX),
+                (self._dec, AddressingMode.ABSX),
                 (None, None)
             ],
             #E
             [
-                (self._cpx, Mode.IMM),
-                (self._sbc, Mode.ZPIX),
+                (self._cpx, AddressingMode.IMM),
+                (self._sbc, AddressingMode.ZPIX),
                 (None, None),
                 (None, None),
-                (self._cpx, Mode.ZP),
-                (self._sbc, Mode.ZP),
-                (self._inc, Mode.ZP),
+                (self._cpx, AddressingMode.ZP),
+                (self._sbc, AddressingMode.ZP),
+                (self._inc, AddressingMode.ZP),
                 (None, None),
-                (self._inx, Mode.IMPLIED),
-                (self._sbc, Mode.IMM),
-                (self._nop, Mode.IMPLIED),
+                (self._inx, AddressingMode.IMPLIED),
+                (self._sbc, AddressingMode.IMM),
+                (self._nop, AddressingMode.IMPLIED),
                 (None, None),
-                (self._cpx, Mode.ABS),
-                (self._sbc, Mode.ABS),
-                (self._inc, Mode.ABS),
+                (self._cpx, AddressingMode.ABS),
+                (self._sbc, AddressingMode.ABS),
+                (self._inc, AddressingMode.ABS),
                 (None, None)
             ],
             #F
             [
-                (self._beq, Mode.REL),
-                (self._sbc, Mode.ZPIY),
+                (self._beq, AddressingMode.REL),
+                (self._sbc, AddressingMode.ZPIY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._sbc, Mode.ZPX),
-                (self._inc, Mode.ZPX),
+                (self._sbc, AddressingMode.ZPX),
+                (self._inc, AddressingMode.ZPX),
                 (None, None),
-                (self._sed, Mode.IMPLIED),
-                (self._sbc, Mode.ABSY),
+                (self._sed, AddressingMode.IMPLIED),
+                (self._sbc, AddressingMode.ABSY),
                 (None, None),
                 (None, None),
                 (None, None),
-                (self._sbc, Mode.ABSX),
-                (self._inc, Mode.ABSX),
+                (self._sbc, AddressingMode.ABSX),
+                (self._inc, AddressingMode.ABSX),
                 (None, None)
             ]
         ]
 
-    def _adc(self, mode: Mode):
+    def _adc(self, mode: AddressingMode):
         data = 0
-        if mode == Mode.ABSIX:
+        if mode == AddressingMode.ABSIX:
             (data, _) = self._mode_absix()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             data = self._data_fetch()
-        elif mode == Mode.ABS:
+        elif mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (data, _) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
         else:
             raise IllegalAddressingMode(f"ADC {mode.name}")
@@ -491,46 +353,46 @@ class MPU:
             self._flags.carry = 1
             self._a = self._a & 0xFF
 
-    def _and(self, mode: Mode):
+    def _and(self, mode: AddressingMode):
         data = 0
-        if mode == Mode.ABS:
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             data = self._data_fetch()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ZPIX:
+        elif mode == AddressingMode.ZPIX:
             (data, _) = self._mode_zpix()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (data, _) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"AND {mode.name}")
 
         self._a = (self._a & data) & 0xFF
 
-    def _asl(self, mode: Mode):
-        if mode == Mode.ACC:
+    def _asl(self, mode: AddressingMode):
+        if mode == AddressingMode.ACC:
             data = self._a
             self._a = self.__shift_left(data)
-        elif mode == Mode.ABS:
+        elif mode == AddressingMode.ABS:
             (data, addr) = self._mode_abs()
             shifted = self.__shift_left(data)
             self._ram.write(addr, shifted)
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, addr) = self._mode_zp()
             shifted = self.__shift_left(data)
             self._ram.write(addr, shifted)
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, addr) = self._mode_absx()
             shifted = self.__shift_left(data)
             self._ram.write(addr, shifted)
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, addr) = self._mode_zpx()
             shifted = self.__shift_left(data)
             self._ram.write(addr, data)
@@ -546,8 +408,8 @@ class MPU:
             shifted &= 0xFF
         return shifted
 
-    def _bcc(self, mode: Mode):
-        if mode != Mode.REL:
+    def _bcc(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BCC {mode.name}")
 
         if self._flags.carry == 0:
@@ -556,8 +418,8 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _bcs(self, mode: Mode):
-        if mode != Mode.REL:
+    def _bcs(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BCS {mode.name}")
 
         if self._flags.carry == 1:
@@ -566,8 +428,8 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _beq(self, mode: Mode):
-        if mode != Mode.REL:
+    def _beq(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BEQ {mode.name}")
 
         if self._flags.zero == 1:
@@ -576,11 +438,11 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _bit(self, mode: Mode):
+    def _bit(self, mode: AddressingMode):
         pass
 
-    def _bmi(self, mode: Mode):
-        if mode != Mode.REL:
+    def _bmi(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BMI {mode.name}")
 
         if self._flags.sign == 1:
@@ -589,8 +451,8 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _bne(self, mode: Mode):
-        if mode != Mode.REL:
+    def _bne(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BNE {mode.name}")
 
         if self._flags.zero == 0:
@@ -599,8 +461,8 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _bpl(self, mode: Mode):
-        if mode != Mode.REL:
+    def _bpl(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BPL {mode.name}")
 
         if self._flags.sign == 0:
@@ -609,8 +471,8 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _brk(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _brk(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"BRK {mode.name}")
 
         self._pc.reg += 2
@@ -622,8 +484,8 @@ class MPU:
         self._pc.set_pc_lo(self._ram.read(0xFFFE))
         self._pc.set_pc_hi(self._ram.read(0xFFFF))
 
-    def _bvc(self, mode: Mode):
-        if mode != Mode.REL:
+    def _bvc(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BVC {mode.name}")
 
         if self._flags.overflow == 0:
@@ -632,8 +494,8 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _bvs(self, mode: Mode):
-        if mode != Mode.REL:
+    def _bvs(self, mode: AddressingMode):
+        if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BVS {mode.name}")
 
         if self._flags.overflow == 1:
@@ -642,46 +504,46 @@ class MPU:
         else:
             self._pc.advance_pc()
 
-    def _clc(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _clc(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"CLC {mode.name}")
 
         self._flags.carry = 0
 
-    def _cld(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _cld(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"CLD {mode.name}")
 
         self._flags.decimal = 0
 
-    def _cli(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _cli(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"CLI {mode.name}")
 
         self._flags.interrupt = 0
 
-    def _clv(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _clv(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"CLV {mode.name}")
 
         self._flags.overflow = 0
 
-    def _cmp(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _cmp(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             data = self._data_fetch
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ZPIX:
+        elif mode == AddressingMode.ZPIX:
             (data, _) = self._mode_zpix()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (data, _) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"CMP {mode.name}")
@@ -702,12 +564,12 @@ class MPU:
         else:
             self._flags.carry = 0
 
-    def _cpx(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _cpx(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             data = self._data_fetch()
         else:
             raise IllegalAddressingMode(f"CPX {mode.name}")
@@ -728,12 +590,12 @@ class MPU:
         else:
             self._flags.carry = 0
 
-    def _cpy(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _cpy(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             data = self._data_fetch()
         else:
             raise IllegalAddressingMode(f"CPX {mode.name}")
@@ -754,14 +616,14 @@ class MPU:
         else:
             self._flags.carry = 0
 
-    def _dec(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _dec(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, addr) = self._mode_abs()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, addr) = self._mode_absx()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, addr) = self._mode_zp()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"DEC {mode.name}")
@@ -772,8 +634,8 @@ class MPU:
         self._flags.update_sign(result)
         self._flags.update_zero(result)
 
-    def _dex(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _dex(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"DEX {mode.name}")
 
         self._x = self._x - 1
@@ -781,8 +643,8 @@ class MPU:
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
 
-    def _dey(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _dey(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"DEY {mode.name}")
 
         self._y = self._y - 1
@@ -790,22 +652,22 @@ class MPU:
         self._flags.update_sign(self._y)
         self._flags.update_zero(self._y)
 
-    def _eor(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _eor(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             data = self._data_fetch()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ZPIX:
+        elif mode == AddressingMode.ZPIX:
             (data, _) = self._mode_zpix()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (data, _) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"EOR {mode.name}")
@@ -816,14 +678,14 @@ class MPU:
         self._flags.update_zero(self._a)
 
 
-    def _inc(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _inc(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, addr) = self._mode_abs()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, addr) = self._mode_absx()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, addr) = self._mode_zp()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"INC {mode.name}")
@@ -834,8 +696,8 @@ class MPU:
         self._flags.update_sign(result)
         self._flags.update_zero(result)
 
-    def _inx(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _inx(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INX {mode.name}")
 
         self._x = self._x + 1
@@ -843,8 +705,8 @@ class MPU:
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
 
-    def _iny(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _iny(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INY {mode.name}")
 
         self._y = self._y + 1
@@ -852,18 +714,18 @@ class MPU:
         self._flags.update_sign(self._y)
         self._flags.update_zero(self._y)
 
-    def _jmp(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _jmp(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs()
-        elif mode == Mode.IND:
+        elif mode == AddressingMode.IND:
             (_, addr) = self._mode_ind()
         else:
             raise IllegalAddressingMode(f"JMP {mode.name}")
 
         self._pc.reg = addr
 
-    def _jsr(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _jsr(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs()
         else:
             raise IllegalAddressingMode(f"JSR {mode.name}")
@@ -872,22 +734,22 @@ class MPU:
         self._stack.push(self._pc.pc_lo)
         self._pc.reg = addr
 
-    def _lda(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _lda(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             data = self._data_fetch()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ZPIX:
+        elif mode == AddressingMode.ZPIX:
             (data, _) = self._mode_zpix()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (data, _) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"LDA {mode.name}")
@@ -897,16 +759,16 @@ class MPU:
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
 
-    def _ldx(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _ldx(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             (data, _) = self._mode_imm()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ZPY:
+        elif mode == AddressingMode.ZPY:
             (data, _) = self._mode_zpy()
         else:
             raise IllegalAddressingMode(f"LDX {mode.name}")
@@ -916,16 +778,16 @@ class MPU:
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
 
-    def _ldy(self, mode: Mode):
-        if mode == Mode.IMM:
+    def _ldy(self, mode: AddressingMode):
+        if mode == AddressingMode.IMM:
             (data, _) = self._mode_imm()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.ABS:
+        elif mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
         else:
             raise IllegalAddressingMode(f"LDY {mode.name}")
@@ -935,17 +797,17 @@ class MPU:
         self._flags.update_sign(self._y)
         self._flags.update_zero(self._y)
 
-    def _lsr(self, mode: Mode):
-        if mode == Mode.ACC:
+    def _lsr(self, mode: AddressingMode):
+        if mode == AddressingMode.ACC:
             data = self._a
             addr = None
-        elif mode == Mode.ABS:
+        elif mode == AddressingMode.ABS:
             (data, addr) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, addr) = self._mode_zp()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, addr) = self._mode_absx()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"LSR {mode.name}")
@@ -960,28 +822,28 @@ class MPU:
         else:
             self._a = data
 
-    def _nop(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _nop(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"NOP {mode.name}")
 
         time.sleep(MPU.CYCLE * 2)
 
-    def _ora(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _ora(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             (data, _) = self._mode_imm()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ZPIX:
+        elif mode == AddressingMode.ZPIX:
             (data, _) = self._mode_zpix()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (data, _) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"ORA {mode.name}")
@@ -991,20 +853,20 @@ class MPU:
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
 
-    def _pha(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _pha(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PHA {mode.name}")
 
         self._stack.push(self._a)
 
-    def _php(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _php(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PHP {mode.name}")
 
         self._stack.push(self._flags.to_int())
 
-    def _pla(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _pla(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PLA {mode.name}")
 
         self._a = self._stack.pop()
@@ -1012,23 +874,23 @@ class MPU:
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
 
-    def _plp(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _plp(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PLP {mode.name}")
 
         self._flags.update_flags(self._stack.pop())
 
-    def _rol(self, mode: Mode):
-        if mode == Mode.ACC:
+    def _rol(self, mode: AddressingMode):
+        if mode == AddressingMode.ACC:
             data = self._a
             addr = None
-        elif mode == Mode.ABS:
+        elif mode == AddressingMode.ABS:
             (data, addr) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, addr) = self._mode_zp()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, addr) = self._mode_absx()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"ROL {mode.name}")
@@ -1044,17 +906,17 @@ class MPU:
             self._a = data
 
 
-    def _ror(self, mode: Mode):
-        if mode == Mode.ACC:
+    def _ror(self, mode: AddressingMode):
+        if mode == AddressingMode.ACC:
             data = self._a
             addr = None
-        elif mode == Mode.ABS:
+        elif mode == AddressingMode.ABS:
             (data, addr) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, addr) = self._mode_zp()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, addr) = self._mode_absx()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"ROR {mode.name}")
@@ -1069,37 +931,37 @@ class MPU:
         else:
             self._a = data
 
-    def _rti(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _rti(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"RTI {mode.name}")
 
         self._flags.update_flags(self._stack.pop())
         self._pc.set_pc_lo(self._stack.pop())
         self._pc.set_pc_hi(self._stack.pop())
 
-    def _rts(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _rts(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"RTS {mode.name}")
 
         self._pc.set_pc_lo(self._stack.pop())
         self._pc.set_pc_hi(self._stack.pop())
 
-    def _sbc(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _sbc(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
-        elif mode == Mode.IMM:
+        elif mode == AddressingMode.IMM:
             (data, _) = self._mode_imm()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (data, _) = self._mode_absy()
-        elif mode == Mode.ZPIX:
+        elif mode == AddressingMode.ZPIX:
             (data, _) = self._mode_zpix()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (data, _) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (data, _) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"SBC {mode.name}")
@@ -1114,38 +976,38 @@ class MPU:
 
         self._a &= 0xFF
 
-    def _sec(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _sec(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"SEC {mode.name}")
 
         self._flags.carry = 1
 
-    def _sed(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _sed(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"SED {mode.name}")
 
         self._flags.decimal = 1
 
-    def _sei(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _sei(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"SEI {mode.name}")
 
         self._flags.interrupt = 1
 
-    def _sta(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _sta(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (_, addr) = self._mode_zp()
-        elif mode == Mode.ABSX:
+        elif mode == AddressingMode.ABSX:
             (_, addr) = self._mode_absx()
-        elif mode == Mode.ABSY:
+        elif mode == AddressingMode.ABSY:
             (_, addr) = self._mode_absy()
-        elif mode == Mode.ZPIX:
+        elif mode == AddressingMode.ZPIX:
             (_, addr) = self._mode_zpix()
-        elif mode == Mode.ZPIY:
+        elif mode == AddressingMode.ZPIY:
             (_, addr) = self._mode_zpiy()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (_, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"STA {mode.name}")
@@ -1153,32 +1015,32 @@ class MPU:
         self._ram.write(addr, self._a)
 
 
-    def _stx(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _stx(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (_, addr) = self._mode_zp()
-        elif mode == Mode.ZPY:
+        elif mode == AddressingMode.ZPY:
             (_, addr) = self._mode_zpy()
         else:
             raise IllegalAddressingMode(f"STX {mode.name}")
 
         self._ram.write(addr, self._x)
 
-    def _sty(self, mode: Mode):
-        if mode == Mode.ABS:
+    def _sty(self, mode: AddressingMode):
+        if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs()
-        elif mode == Mode.ZP:
+        elif mode == AddressingMode.ZP:
             (_, addr) = self._mode_zp()
-        elif mode == Mode.ZPX:
+        elif mode == AddressingMode.ZPX:
             (_, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"STY {mode.name}")
 
         self._ram.write(addr, self._y)
 
-    def _tax(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _tax(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TAX {mode.name}")
 
         self._x = self._a
@@ -1186,8 +1048,8 @@ class MPU:
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
 
-    def _tay(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _tay(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TAY {mode.name}")
 
         self._y = self._a
@@ -1195,8 +1057,8 @@ class MPU:
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
 
-    def _tsx(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _tsx(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TSX {mode.name}")
 
         self._x = self._stack.sp
@@ -1204,8 +1066,8 @@ class MPU:
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
 
-    def _txa(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _txa(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TXA {mode.name}")
 
         self._a = self._x
@@ -1213,8 +1075,8 @@ class MPU:
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
 
-    def _txs(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _txs(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TXS {mode.name}")
 
         self._stack.sp = self._x
@@ -1222,8 +1084,8 @@ class MPU:
         self._flags.update_sign(self._stack.sp)
         self._flags.update_zero(self._stack.sp)
 
-    def _tya(self, mode: Mode):
-        if mode != Mode.IMPLIED:
+    def _tya(self, mode: AddressingMode):
+        if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TYA {mode.name}")
 
         self._a = self._y
@@ -1313,7 +1175,7 @@ class MPU:
         return (data, addr)
 
     def dump(self):
-        print(f"PC: {self._pc.reg}")
+        print(f"PC: {self._pc.reg:04x}")
         print(f" A: 0x{self._a:04x}")
         print(f" X: 0x{self._x:04x}")
         print(f" Y: 0x{self._y:04x}")
@@ -1353,25 +1215,3 @@ class MPU:
                 execution_cycle += 1
         except EndOfExecution:
             return execution_cycle
-
-def main():
-    (opts, _) = getopt.getopt(sys.argv[1:], 'f:')
-
-    program = None
-    for (opt, arg) in opts:
-        if opt == '-f':
-            program = arg
-
-    if program is None:
-        raise RuntimeError("No program specified")
-
-    c = MPU()
-    c.load(program)
-    t0 = time.time()
-    cycles = c.run()
-    t1 = time.time()
-    print(f'Performed {cycles} execution cycles in {t1 - t0:.08f} seconds')
-    c.dump()
-
-if __name__ == '__main__':
-    main()
