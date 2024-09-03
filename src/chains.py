@@ -23,6 +23,8 @@ def main():
     c = MPU()
     c.load(program, prg_size=nes.prg_rom)
     c.reset()
+    c._ram.write(0x2002, 0xc0)
+    c._a = 0xc0
     t0 = time.time()
     cycles = c.run(trace=True)
     t1 = time.time()

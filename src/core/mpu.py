@@ -548,7 +548,7 @@ class MPU:
         elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
         elif mode == AddressingMode.IMM:
-            data = self._data_fetch
+            data = self._data_fetch()
         elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
         elif mode == AddressingMode.ABSY:
@@ -714,7 +714,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INX {mode.name}")
 
-        self._x = self._x + 1
+        self._x = (self._x + 1) % 0xFF
 
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
@@ -723,7 +723,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INY {mode.name}")
 
-        self._y = self._y + 1
+        self._y = (self._y + 1) % 0xFF
 
         self._flags.update_sign(self._y)
         self._flags.update_zero(self._y)
@@ -744,8 +744,10 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"JSR {mode.name}")
 
-        self._stack.push(self._pc.pc_hi)
-        self._stack.push(self._pc.pc_lo)
+        self._pc.advance_pc()
+        self._pc.advance_pc()
+        self._stack.push(self._pc.pc_hi())
+        self._stack.push(self._pc.pc_lo())
         self._pc.reg = addr
 
     def _lda(self, mode: AddressingMode):
@@ -956,9 +958,11 @@ class MPU:
     def _rts(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"RTS {mode.name}")
-
-        self._pc.set_pc_lo(self._stack.pop())
-        self._pc.set_pc_hi(self._stack.pop())
+        pc_lo = self._stack.pop()
+        self._pc.set_pc_lo(pc_lo)
+        pc_hi = self._stack.pop()
+        self._pc.set_pc_hi(pc_hi)
+        self._pc.advance_pc()
 
     def _sbc(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
@@ -1124,11 +1128,11 @@ class MPU:
         return addr
 
     def _addr_fetch(self):
-        addr_hi = self._ram.read(self._pc.reg)
-        self._pc.advance_pc()
         addr_lo = self._ram.read(self._pc.reg)
         self._pc.advance_pc()
-        addr = (addr_hi << 4) | (addr_lo)
+        addr_hi = self._ram.read(self._pc.reg)
+        self._pc.advance_pc()
+        addr = (addr_hi << 8) | (addr_lo)
         return addr
 
     def _mode_imm(self):
@@ -1190,7 +1194,7 @@ class MPU:
 
     def _to_signed(self, n) -> int:
         if n & 0x80:
-            return ~0 | n
+            return ((~n & 0xff) + 1) * -1
         else:
             return n
 
@@ -1210,6 +1214,7 @@ class MPU:
         (op, addr_mode) = table_block[entry]
 
         if op is None:
+            print(f"table: {table:02x}, entry: {entry:02x}")
             raise EndOfExecution()
 
         if trace:
@@ -1224,7 +1229,7 @@ class MPU:
             mem_loc = start_load
             prg_read_size = 1
             while buffer and prg_read_size < prg_size:
-                self._ram.write(mem_loc, int.from_bytes(buffer, byteorder='big') & 0xFF)
+                self._ram.write(mem_loc, int.from_bytes(buffer, 'little') & 0xFF)
                 buffer = binary_file.read1(1)
                 mem_loc += 1
                 prg_read_size += 1
@@ -1251,4 +1256,6 @@ class MPU:
                     time.sleep(MPU.CYCLE - elapsed)
                 execution_cycle += 1
         except EndOfExecution:
+            return execution_cycle
+        except KeyboardInterrupt:
             return execution_cycle
