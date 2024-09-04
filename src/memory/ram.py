@@ -1,7 +1,12 @@
 class RAM:
-    def __init__(self, size=0xFFFF):
+    def __init__(self, size: int = 0xFFFF):
         self.store = []
-        for _ in range(size + 1):
+        for _ in range(size):
+            self.store.append(0)
+
+    def set_size(self, size: int = 0xFFFF):
+        self.store = []
+        for _ in range(size):
             self.store.append(0)
 
     def read(self, loc) -> int:

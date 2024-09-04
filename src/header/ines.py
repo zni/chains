@@ -1,23 +1,24 @@
+from io import BufferedReader
+
+from exc.core import InvalidROM
+
 class INESHeader:
-    def __init__(self, rom_file):
-        self.rom_file = rom_file
+    def __init__(self, rom_buffer: BufferedReader):
+        self.rom_buffer = rom_buffer
         self.prg_rom = 0
         self.chr_rom = 0
-        self.magic = ""
+        self.magic = b""
 
     def read(self):
-
-        with open(self.rom_file, 'rb') as binary_file:
-            self.magic = binary_file.read1(4)
-
-            self.prg_rom = binary_file.read1(1)
-            self.prg_rom = int.from_bytes(self.prg_rom, 'little') * (16 * 1024)
-
-            self.chr_rom = binary_file.read1(1)
-            self.chr_rom = int.from_bytes(self.chr_rom, 'little') * (8 * 1024)
-
+        self.magic = self.rom_buffer.read1(4)
         if self.magic != b"NES\x1a":
-            raise RuntimeError("Not a NES ROM.")
+            raise InvalidROM()
+
+        self.prg_rom = self.rom_buffer.read1(1)
+        self.prg_rom = int.from_bytes(self.prg_rom, 'little') * (16 * 1024)
+
+        self.chr_rom = self.rom_buffer.read1(1)
+        self.chr_rom = int.from_bytes(self.chr_rom, 'little') * (8 * 1024)
 
     def dump(self):
         print(f"magic: {self.magic}")

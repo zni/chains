@@ -2,8 +2,7 @@ import getopt
 import sys
 import time
 
-from core.mpu import MPU
-from header.ines import INESHeader
+from core.system import System
 
 def main():
     (opts, _) = getopt.getopt(sys.argv[1:], 'f:')
@@ -16,23 +15,12 @@ def main():
     if program is None:
         raise RuntimeError("No program specified")
 
-    nes = INESHeader(program)
-    nes.read()
-    nes.dump()
-
-    c = MPU()
-    c.load(program, prg_size=nes.prg_rom)
-    c.reset()
-    c._ram.write(0x2002, 0xc0)
-    c._a = 0xc0
-    t0 = time.time()
-    cycles = c.run(trace=True)
-    t1 = time.time()
-    print(f'Performed {cycles} execution cycles in {t1 - t0:.08f} seconds')
-    c.dump()
+    system = System()
+    system.load(program)
+    system.start(trace=True)
 
 if __name__ == '__main__':
     try:
         main()
-    except RuntimeError as e:
-        print(e)
+    except Exception as e:
+        print(f"Error: {e}")

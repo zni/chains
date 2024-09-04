@@ -3,3 +3,6 @@ class EndOfExecution(Exception):
 
 class IllegalAddressingMode(Exception):
     pass
+
+class InvalidROM(Exception):
+    pass

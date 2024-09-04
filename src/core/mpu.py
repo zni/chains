@@ -1,4 +1,5 @@
 import time
+from io import BufferedReader
 
 from .modes import AddressingMode
 
@@ -20,6 +21,8 @@ class MPU:
         self._flags = FlagRegister()
         self._ram = RAM()
         self._stack = Stack(self._ram)
+
+        self.bus = None
 
         # https://en.wikipedia.org/wiki/MOS_Technology_6502#Instruction_table
         self._lookup_table = [
@@ -383,19 +386,19 @@ class MPU:
         elif mode == AddressingMode.ABS:
             (data, addr) = self._mode_abs()
             shifted = self.__shift_left(data)
-            self._ram.write(addr, shifted)
+            self.bus.write(addr, shifted)
         elif mode == AddressingMode.ZP:
             (data, addr) = self._mode_zp()
             shifted = self.__shift_left(data)
-            self._ram.write(addr, shifted)
+            self.bus.write(addr, shifted)
         elif mode == AddressingMode.ABSX:
             (data, addr) = self._mode_absx()
             shifted = self.__shift_left(data)
-            self._ram.write(addr, shifted)
+            self.bus.write(addr, shifted)
         elif mode == AddressingMode.ZPX:
             (data, addr) = self._mode_zpx()
             shifted = self.__shift_left(data)
-            self._ram.write(addr, data)
+            self.bus.write(addr, data)
         else:
             raise IllegalAddressingMode(f"ASL {mode.name}")
 
@@ -413,7 +416,7 @@ class MPU:
             raise IllegalAddressingMode(f"BCC {mode.name}")
 
         if self._flags.carry == 0:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -423,7 +426,7 @@ class MPU:
             raise IllegalAddressingMode(f"BCS {mode.name}")
 
         if self._flags.carry == 1:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -433,7 +436,7 @@ class MPU:
             raise IllegalAddressingMode(f"BEQ {mode.name}")
 
         if self._flags.zero == 1:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -446,21 +449,21 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"BIT {mode.name}")
 
+        self._flags.overflow = (data & 0x40) >> 6
+        self._flags.sign = (data & 0x80) >> 7
+
         result = self._a & data
         if result == 0:
             self._flags.zero = 1
         else:
             self._flags.zero = 0
 
-        self._flags.overflow = (result & 0x40) >> 6
-        self._flags.sign = (result & 0x80) >> 7
-
     def _bmi(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BMI {mode.name}")
 
         if self._flags.sign == 1:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -470,7 +473,7 @@ class MPU:
             raise IllegalAddressingMode(f"BNE {mode.name}")
 
         if self._flags.zero == 0:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -480,7 +483,7 @@ class MPU:
             raise IllegalAddressingMode(f"BPL {mode.name}")
 
         if self._flags.sign == 0:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -495,15 +498,15 @@ class MPU:
         self._pc.reg -= 2
         self._stack.push(self._flags.to_int())
 
-        self._pc.set_pc_lo(self._ram.read(0xFFFE))
-        self._pc.set_pc_hi(self._ram.read(0xFFFF))
+        self._pc.set_pc_lo(self.bus.read(0xFFFE))
+        self._pc.set_pc_hi(self.bus.read(0xFFFF))
 
     def _bvc(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BVC {mode.name}")
 
         if self._flags.overflow == 0:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -513,7 +516,7 @@ class MPU:
             raise IllegalAddressingMode(f"BVS {mode.name}")
 
         if self._flags.overflow == 1:
-            displacement = self._ram.read(self._pc.reg)
+            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(self._to_signed(displacement))
         else:
             self._pc.advance_pc()
@@ -643,7 +646,7 @@ class MPU:
             raise IllegalAddressingMode(f"DEC {mode.name}")
 
         result = data - 1
-        self._ram.write(addr, result)
+        self.bus.write(addr, result)
 
         self._flags.update_sign(result)
         self._flags.update_zero(result)
@@ -705,7 +708,7 @@ class MPU:
             raise IllegalAddressingMode(f"INC {mode.name}")
 
         result = data + 1
-        self._ram.write(addr, result)
+        self.bus.write(addr, result)
 
         self._flags.update_sign(result)
         self._flags.update_zero(result)
@@ -834,7 +837,7 @@ class MPU:
         self._flags.update_zero(data)
 
         if addr is not None:
-            self._ram.write(addr, data)
+            self.bus.write(addr, data)
         else:
             self._a = data
 
@@ -917,7 +920,7 @@ class MPU:
         data |= current_carry
 
         if addr is not None:
-            self._ram.write(addr, data)
+            self.bus.write(addr, data)
         else:
             self._a = data
 
@@ -943,7 +946,7 @@ class MPU:
         data |= (current_carry << 7)
 
         if addr is not None:
-            self._ram.write(addr, data)
+            self.bus.write(addr, data)
         else:
             self._a = data
 
@@ -1030,7 +1033,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"STA {mode.name}")
 
-        self._ram.write(addr, self._a)
+        self.bus.write(addr, self._a)
 
 
     def _stx(self, mode: AddressingMode):
@@ -1043,7 +1046,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"STX {mode.name}")
 
-        self._ram.write(addr, self._x)
+        self.bus.write(addr, self._x)
 
     def _sty(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
@@ -1055,7 +1058,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"STY {mode.name}")
 
-        self._ram.write(addr, self._y)
+        self.bus.write(addr, self._y)
 
     def _tax(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -1112,84 +1115,104 @@ class MPU:
         self._flags.update_zero(self._a)
 
     def _absix_fetch(self):
-        addr = self._ram.read(self._pc.reg)
+        addr = self.bus.read(self._pc.reg)
         self._pc.advance_pc()
         addr += self._x
         return addr
 
     def _data_fetch(self):
-        data = self._ram.read(self._pc.reg)
+        data = self.bus.read(self._pc.reg)
         self._pc.advance_pc()
         return data
 
     def _zpage_addr_fetch(self):
-        addr = self._ram.read(self._pc.reg)
+        addr = self.bus.read(self._pc.reg)
         self._pc.advance_pc()
         return addr
 
     def _addr_fetch(self):
-        addr_lo = self._ram.read(self._pc.reg)
+        addr_lo = self.bus.read(self._pc.reg)
         self._pc.advance_pc()
-        addr_hi = self._ram.read(self._pc.reg)
+        addr_hi = self.bus.read(self._pc.reg)
         self._pc.advance_pc()
         addr = (addr_hi << 8) | (addr_lo)
         return addr
 
     def _mode_imm(self):
         data = self._data_fetch()
+        print(f"\tdata: {data:04x}")
         return (data, None)
 
     def _mode_absix(self):
         addr = self._absix_fetch()
-        ind_addr = self._ram.read(addr)
-        data = self._ram.read(ind_addr)
+        ind_addr = self.bus.read(addr)
+        data = self.bus.read(ind_addr)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {ind_addr:04x}")
         return (data, ind_addr)
 
     def _mode_zp(self):
         addr = self._zpage_addr_fetch()
-        data = self._ram.read(addr)
+        data = self.bus.read(addr)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {addr:04x}")
         return (data, addr)
 
     def _mode_abs(self):
         addr = self._addr_fetch()
-        data = self._ram.read(addr)
+        data = self.bus.read(addr)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {addr:04x}")
         return (data, addr)
 
     def _mode_ind(self):
         addr = self._addr_fetch()
-        ind_addr = self._ram.read(addr)
+        ind_addr = self.bus.read(addr)
+        print(f"\tind_addr: {ind_addr:04x}")
         return (None, ind_addr)
 
     def _mode_zpiy(self):
         addr = self._zpage_addr_fetch()
-        ind_addr = self._ram.read(addr)
-        data = self._ram.read(ind_addr + self._y)
+        ind_addr = self.bus.read(addr)
+        data = self.bus.read(ind_addr + self._y)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {ind_addr + self._y:04x}")
         return (data, ind_addr + self._y)
 
     def _mode_absx(self):
         addr = self._addr_fetch()
-        data = self._ram.read(addr + self._x)
+        data = self.bus.read(addr + self._x)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {addr + self._x:04x}")
         return (data, addr + self._x)
 
     def _mode_absy(self):
         addr = self._addr_fetch()
-        data = self._ram.read(addr + self._y)
+        data = self.bus.read(addr + self._y)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {addr + self._y:04x}")
         return (data, addr + self._y)
 
     def _mode_zpx(self):
         addr = self._zpage_addr_fetch()
-        data = self._ram.read(addr + self._x)
+        data = self.bus.read(addr + self._x)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {addr + self._x:04x}")
         return (data, addr + self._x)
 
     def _mode_zpy(self):
         addr = self._zpage_addr_fetch()
-        data = self._ram.read(addr + self._y)
+        data = self.bus.read(addr + self._y)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {addr + self._y:04x}")
         return (data, addr + self._y)
 
     def _mode_zpix(self):
         ind_addr = self._zpage_addr_fetch()
-        addr = self._ram.read(ind_addr + self._x)
-        data = self._ram.read(addr)
+        addr = self.bus.read(ind_addr + self._x)
+        data = self.bus.read(addr)
+        print(f"\tdata: {data:04x}")
+        print(f"\taddr: {addr:04x}")
         return (data, addr)
 
     def _to_signed(self, n) -> int:
@@ -1199,7 +1222,7 @@ class MPU:
             return n
 
     def dump(self):
-        print(f"P : 0x{self._flags.to_int():04x}")
+        print(f" P: 0b{self._flags.to_int():08b}")
         print(f"PC: 0x{self._pc.reg:04x}")
         print(f" A: 0x{self._a:04x}")
         print(f" X: 0x{self._x:04x}")
@@ -1222,23 +1245,21 @@ class MPU:
 
         op(addr_mode)
 
-    def load(self, program, prg_size=0, start_load=0x8000):
-        with open(program, 'rb') as binary_file:
-            binary_file.seek(16)
-            buffer : bytes = binary_file.read1(1)
-            mem_loc = start_load
-            prg_read_size = 1
-            while buffer and prg_read_size < prg_size:
-                self._ram.write(mem_loc, int.from_bytes(buffer, 'little') & 0xFF)
-                buffer = binary_file.read1(1)
-                mem_loc += 1
-                prg_read_size += 1
+    def load(self, rom_buffer: BufferedReader, prg_size: int = 0, start_load: int = 0x8000):
+        rom_buffer.seek(16)
+        buffer : bytes = rom_buffer.read1(1)
+        mem_loc = start_load
+        prg_read_size = 1
+        while buffer and prg_read_size < prg_size:
+            self._ram.write(mem_loc, int.from_bytes(buffer, 'little') & 0xFF)
+            buffer = rom_buffer.read1(1)
+            mem_loc += 1
+            prg_read_size += 1
 
     def reset(self):
         start_lo = self._ram.read(0xFFFC)
         start_hi = self._ram.read(0xFFFD)
         start = (start_hi << 8) | (start_lo)
-        print(f"start: {start:04x}")
         self._pc.reg = start
         self._a = 0
         self._x = 0
