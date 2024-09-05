@@ -106,8 +106,10 @@ class PPUStatus:
 class OAM:
     ADDR = 0x2003
     DATA = 0x2004
+    DMA = 0x4014
 
     def __init__(self):
+        self._oam_storage = RAM(256)
         self.latch = False
 
         self.addr = 0
@@ -115,14 +117,26 @@ class OAM:
         self.dma = 0
 
     def read(self, loc:int) -> int:
-        if self.latch and loc == OAM.ADDR:
-            self.data = self._ram.read(OAM.ADDR)
-            self.latch = False
-        return self.data
+        if loc == OAM.ADDR:
+            return 0
+
+        if loc == OAM.DATA:
+            return self._oam_storage.read(self.addr)
+
+        if loc == OAM.DMA:
+            return 0
 
     def write(self, loc:int, data:int):
-        if loc == OAM.DATA:
-            self.latch = True
+        if loc == OAM.ADDR:
+            input("OAMADDR break")
+            self.addr = data
+        elif loc == OAM.DATA:
+            input("OAMDATA break")
+            self._oam_storage.write(self.addr, data)
+            self.addr += 1
+        elif loc == OAM.DMA:
+            input("OAMDMA break")
+            self.dma = data
 
 class PPUScroll:
     def __init__(self):
@@ -168,10 +182,15 @@ class PPUAddressData:
             self.data = data
             print(f"PPUAddressData writing to {self.addr:04x}: {self.data:04x}")
             self._ram.write(self.addr, self.data)
+            self.addr += 1
 
 class PPU:
+
+    NTSC = 0.0167
+
     def __init__(self):
         self._ram = None
+        self._cycle_seconds = 0
 
         self._ppuctrl = PPUCtrl()
         self._ppumask = PPUMask()
@@ -209,3 +228,13 @@ class PPU:
             chr_int = int.from_bytes(chr_byte, 'little')
             self._ram.write(mem_loc, chr_int)
             mem_loc += 1
+
+    def trigger_nmi(self, cycle_seconds:float) -> bool:
+        self._cycle_seconds += cycle_seconds
+        if self._cycle_seconds >= PPU.NTSC and self._ppuctrl.nmi == 1:
+            self._cycle_seconds = 0
+            self._ppuctrl.nmi = 0
+            self._ppustatus.vblank = 1
+            return True
+        else:
+            return False

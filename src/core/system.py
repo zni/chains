@@ -1,9 +1,13 @@
+import time
+
+from exc.core import EndOfExecution
 from core.bus import Bus
 from core.mpu import MPU
 from core.ppu import PPU
 from header.ines import INESHeader
 
 class System:
+
     def __init__(self):
         self._mpu = MPU()
         self._ppu = PPU()
@@ -12,7 +16,19 @@ class System:
 
     def start(self, trace: bool = False):
         self._mpu.reset()
-        self._mpu.run(trace=trace)
+        self._ppu._ppustatus.vblank = 1
+        try:
+            while True:
+                pre = time.time()
+                self._mpu.execute(trace=trace)
+                post = time.time()
+                elapsed = post - pre
+                if self._ppu.trigger_nmi(elapsed):
+                    self._mpu.nmi()
+        except EndOfExecution:
+            pass
+        except KeyboardInterrupt:
+            pass
 
     def reset(self):
         self._mpu.reset()

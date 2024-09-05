@@ -10,6 +10,7 @@ class ProgramCounter:
 
     def set_pc_lo(self, pc_lo: int):
         self.reg = (self.reg & 0xFF00) | (pc_lo & 0xFF)
+        self.reg &= 0xFFFF
 
     def set_pc_hi(self, pc_hi: int):
         self.reg = (pc_hi << 8) | (self.reg & 0xFF)

@@ -1228,7 +1228,8 @@ class MPU:
         print(f" X: 0x{self._x:04x}")
         print(f" Y: 0x{self._y:04x}")
 
-    def _execute(self, trace=False):
+    def execute(self, trace=False):
+        pre = time.time()
         instruction = self._data_fetch()
 
         table = (instruction & 0xF0) >> 4
@@ -1244,6 +1245,10 @@ class MPU:
             print(op.__qualname__)
 
         op(addr_mode)
+        post = time.time()
+        elapsed = post - pre
+        if elapsed < MPU.CYCLE:
+            time.sleep(MPU.CYCLE - elapsed)
 
     def load(self, rom_buffer: BufferedReader, prg_size: int = 0, start_load: int = 0x8000):
         rom_buffer.seek(16)
@@ -1265,12 +1270,21 @@ class MPU:
         self._x = 0
         self._y = 0
 
+    def nmi(self):
+        self._stack.push(self._pc.pc_hi())
+        self._stack.push(self._pc.pc_lo())
+        self._stack.push(self._flags.to_int())
+        self._pc.set_pc_lo(self._ram.read(0xFFFA))
+        self._pc.set_pc_hi(self._ram.read(0xFFFB))
+        print(f"PC: {self._pc.reg:04x}")
+        input("NMI")
+
     def run(self, trace=False):
         execution_cycle = 0
         try:
             while True:
                 pre = time.time()
-                self._execute(trace=trace)
+                self.execute(trace=trace)
                 post = time.time()
                 elapsed = post - pre
                 if MPU.CYCLE > elapsed:
