@@ -567,7 +567,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"CMP {mode.name}")
 
-        result = self._a - data
+        result = (self._a - data) & 0xFF
         if result == 0:
             self._flags.zero = 1
         else:
@@ -593,7 +593,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"CPX {mode.name}")
 
-        result = self._x - data
+        result = (self._x - data) & 0xFF
         if result == 0:
             self._flags.zero = 1
         else:
@@ -619,7 +619,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"CPX {mode.name}")
 
-        result = self._y - data
+        result = (self._y - data) & 0xFF
         if result == 0:
             self._flags.zero = 1
         else:
@@ -709,7 +709,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"INC {mode.name}")
 
-        result = data + 1
+        result = (data + 1) & 0xFF
         self.bus.write(addr, result)
 
         self._flags.update_sign(result)
@@ -719,7 +719,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INX {mode.name}")
 
-        self._x = (self._x + 1) % 0xFF
+        self._x = (self._x + 1) & 0xFF
 
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
@@ -728,7 +728,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INY {mode.name}")
 
-        self._y = (self._y + 1) % 0xFF
+        self._y = (self._y + 1) & 0xFF
 
         self._flags.update_sign(self._y)
         self._flags.update_zero(self._y)
