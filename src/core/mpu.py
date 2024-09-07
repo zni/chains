@@ -14,6 +14,8 @@ class MPU:
     CYCLE = 0.0006
 
     def __init__(self):
+        self.trace = False
+
         self._pc = ProgramCounter()
         self._a = 0
         self._x = 0
@@ -747,8 +749,12 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"JSR {mode.name}")
 
-        self._pc.advance_pc()
-        self._pc.advance_pc()
+        # XXX We've advanced past the OP code,
+        #     and past the address onto the next OP code.
+        #     When we return we'll be adding 1 to the PC.
+        #     So we subtract 1 here so we land on the next
+        #     OP code.
+        self._pc.reg -= 1
         self._stack.push(self._pc.pc_hi())
         self._stack.push(self._pc.pc_lo())
         self._pc.reg = addr
@@ -1140,79 +1146,113 @@ class MPU:
 
     def _mode_imm(self):
         data = self._data_fetch()
-        print(f"\tdata: {data:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+
         return (data, None)
 
     def _mode_absix(self):
         addr = self._absix_fetch()
         ind_addr = self.bus.read(addr)
         data = self.bus.read(ind_addr)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {ind_addr:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {ind_addr:04x}")
+
         return (data, ind_addr)
 
     def _mode_zp(self):
         addr = self._zpage_addr_fetch()
         data = self.bus.read(addr)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {addr:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {addr:04x}")
+
         return (data, addr)
 
     def _mode_abs(self):
         addr = self._addr_fetch()
         data = self.bus.read(addr)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {addr:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {addr:04x}")
+
         return (data, addr)
 
     def _mode_ind(self):
         addr = self._addr_fetch()
-        ind_addr = self.bus.read(addr)
-        print(f"\tind_addr: {ind_addr:04x}")
+        ind_addr_lo = self.bus.read(addr)
+        ind_addr_hi = self.bus.read(addr + 1)
+        ind_addr = (ind_addr_hi << 8) | (ind_addr_lo & 0xFF)
+
+        if self.trace:
+            print(f"\t    addr: {addr:04x}")
+            print(f"\tind_addr: {ind_addr:04x}")
+
         return (None, ind_addr)
 
     def _mode_zpiy(self):
         addr = self._zpage_addr_fetch()
         ind_addr = self.bus.read(addr)
         data = self.bus.read(ind_addr + self._y)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {ind_addr + self._y:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {ind_addr + self._y:04x}")
+
         return (data, ind_addr + self._y)
 
     def _mode_absx(self):
         addr = self._addr_fetch()
         data = self.bus.read(addr + self._x)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {addr + self._x:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {addr + self._x:04x}")
+
         return (data, addr + self._x)
 
     def _mode_absy(self):
         addr = self._addr_fetch()
         data = self.bus.read(addr + self._y)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {addr + self._y:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {addr + self._y:04x}")
+
         return (data, addr + self._y)
 
     def _mode_zpx(self):
         addr = self._zpage_addr_fetch()
         data = self.bus.read(addr + self._x)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {addr + self._x:04x}")
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {addr + self._x:04x}")
         return (data, addr + self._x)
 
     def _mode_zpy(self):
         addr = self._zpage_addr_fetch()
         data = self.bus.read(addr + self._y)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {addr + self._y:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {addr + self._y:04x}")
+
         return (data, addr + self._y)
 
     def _mode_zpix(self):
         ind_addr = self._zpage_addr_fetch()
         addr = self.bus.read(ind_addr + self._x)
         data = self.bus.read(addr)
-        print(f"\tdata: {data:04x}")
-        print(f"\taddr: {addr:04x}")
+
+        if self.trace:
+            print(f"\tdata: {data:04x}")
+            print(f"\taddr: {addr:04x}")
+
         return (data, addr)
 
     def _to_signed(self, n) -> int:
@@ -1227,9 +1267,18 @@ class MPU:
         print(f" A: 0x{self._a:04x}")
         print(f" X: 0x{self._x:04x}")
         print(f" Y: 0x{self._y:04x}")
+        self.dump_mem()
+
+    def dump_mem(self):
+        ram = self._ram.store
+        for n in range(self._pc.reg, self._pc.reg + 16, 8):
+            print(f"{ram[n]:02x} {ram[n+1]:02x} {ram[n+2]:02x} {ram[n+3]:02x}", end=' ')
+            print(f"{ram[n+4]:02x} {ram[n+5]:02x} {ram[n+6]:02x} {ram[n+7]:02x}")
 
     def execute(self, trace=False):
-        pre = time.time()
+        self.trace = trace
+
+        instruction_addr = self._pc.reg
         instruction = self._data_fetch()
 
         table = (instruction & 0xF0) >> 4
@@ -1238,17 +1287,15 @@ class MPU:
         (op, addr_mode) = table_block[entry]
 
         if op is None:
-            print(f"table: {table:02x}, entry: {entry:02x}")
+            print(f"table: {table:01x}, entry: {entry:01x}")
+            self.dump()
             raise EndOfExecution()
 
-        if trace:
-            print(op.__qualname__)
+        if self.trace:
+            print(f"{instruction_addr:04x} {instruction:02x} {op.__qualname__}")
 
         op(addr_mode)
-        post = time.time()
-        elapsed = post - pre
-        if elapsed < MPU.CYCLE:
-            time.sleep(MPU.CYCLE - elapsed)
+
 
     def load(self, rom_buffer: BufferedReader, prg_size: int = 0, start_load: int = 0x8000):
         rom_buffer.seek(16)
@@ -1260,6 +1307,12 @@ class MPU:
             buffer = rom_buffer.read1(1)
             mem_loc += 1
             prg_read_size += 1
+
+        # XXX If PRG-ROM is 16K, mirror it.
+        if prg_size <= (16 * 1024):
+            prg = self._ram.store[0x8000:0xBFFF]
+            for (n, byte) in enumerate(prg):
+                self._ram.store[0xC000 + n] = byte
 
     def reset(self):
         start_lo = self._ram.read(0xFFFC)
@@ -1276,8 +1329,8 @@ class MPU:
         self._stack.push(self._flags.to_int())
         self._pc.set_pc_lo(self._ram.read(0xFFFA))
         self._pc.set_pc_hi(self._ram.read(0xFFFB))
-        print(f"PC: {self._pc.reg:04x}")
-        input("NMI")
+        if self.trace:
+            print("NMI")
 
     def run(self, trace=False):
         execution_cycle = 0

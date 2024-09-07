@@ -82,7 +82,7 @@ class PPUMask:
 
 class PPUStatus:
     def __init__(self):
-        self.vblank = 1
+        self.vblank = 0
         self.sprite_0_hit = 0
         self.sprite_overflow = 0
 
@@ -128,14 +128,11 @@ class OAM:
 
     def write(self, loc:int, data:int):
         if loc == OAM.ADDR:
-            input("OAMADDR break")
             self.addr = data
         elif loc == OAM.DATA:
-            input("OAMDATA break")
             self._oam_storage.write(self.addr, data)
             self.addr += 1
         elif loc == OAM.DMA:
-            input("OAMDMA break")
             self.dma = data
 
 class PPUScroll:
@@ -182,7 +179,7 @@ class PPUAddressData:
             self.data = data
             print(f"PPUAddressData writing to {self.addr:04x}: {self.data:04x}")
             self._ram.write(self.addr, self.data)
-            self.addr += 1
+            self.addr = (self.addr + 1) % 0xFFFF
 
 class PPU:
 

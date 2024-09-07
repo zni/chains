@@ -17,7 +17,7 @@ class ProgramCounter:
         self.reg &= 0xFFFF
 
     def advance_pc(self):
-        self.reg = (self.reg + 1) & 0xFFFF
+        self.reg = (self.reg + 1) % 0xFFFF
 
     def displace_pc(self, displacement):
         self.advance_pc()

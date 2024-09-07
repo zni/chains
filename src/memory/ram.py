@@ -20,3 +20,10 @@ class RAM:
             self.store[loc] = data
         except IndexError as e:
             raise RuntimeError(f"Out of bounds write memory access {loc:04x}") from e
+
+    def dma_transfer(self, page, to):
+        base_address = (page << 8) & 0xFF00
+        end_address = base_address | 0x00FF
+
+        for n in range(base_address, end_address + 1):
+            self.store[n] = to.store[n & 0xFF]

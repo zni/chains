@@ -1,7 +1,7 @@
 from .ram import RAM
 
 class Stack:
-    def __init__(self, ram: RAM, origin:int=0x4ff):
+    def __init__(self, ram: RAM, origin:int=0x01FF):
         self._ram = ram
         self.sp = origin
 
@@ -12,4 +12,5 @@ class Stack:
     def pop(self) -> int:
         self.sp += 1
         word = self._ram.read(self.sp)
+        #self.sp += 1
         return word

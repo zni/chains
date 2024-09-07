@@ -1,5 +1,7 @@
 import time
 
+import pygame
+
 from exc.core import EndOfExecution
 from core.bus import Bus
 from core.mpu import MPU
@@ -15,20 +17,28 @@ class System:
         self._mpu.bus = self._bus
 
     def start(self, trace: bool = False):
+        pygame.init()
+        screen = pygame.display.set_mode((256, 240))
+        clock = pygame.time.Clock()
+
         self._mpu.reset()
         self._ppu._ppustatus.vblank = 1
         try:
             while True:
-                pre = time.time()
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        raise EndOfExecution()
+
                 self._mpu.execute(trace=trace)
-                post = time.time()
-                elapsed = post - pre
-                if self._ppu.trigger_nmi(elapsed):
+
+                if self._ppu.trigger_nmi(clock.tick()):
                     self._mpu.nmi()
         except EndOfExecution:
             pass
         except KeyboardInterrupt:
-            pass
+            self._mpu.dump()
+        finally:
+            pygame.quit()
 
     def reset(self):
         self._mpu.reset()

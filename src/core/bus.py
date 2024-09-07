@@ -13,7 +13,13 @@ class Bus:
             return self.prg_ram.read(loc)
 
     def write(self, loc:int, data:int):
-        if loc in self.ppu.mmap.keys():
+        if loc in self.ppu.mmap and loc != self.ppu._oam.DMA:
             self.ppu.write(loc, data)
+        elif loc in self.ppu.mmap and loc == self.ppu._oam.DMA:
+            self.ppu.write(loc, data)
+            self.prg_ram.dma_transfer(
+                self.ppu._oam.dma,
+                self.ppu._oam._oam_storage
+            )
         else:
             self.prg_ram.write(loc, data)
