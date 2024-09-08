@@ -2,7 +2,42 @@ import getopt
 import pygame
 import sys
 
-from chr.tile import Tile
+from bitarray.util import int2ba
+from chr.chr_obj import CHRObj
+
+def read_chr(rom, page, tile) -> CHRObj:
+        if page == 0:
+            page = 0x0000
+        else:
+            page = 0x1000
+
+        chr = CHRObj()
+        page_slice = rom[page:page + 0x0FFF + 1]
+        # 0x0F was 16
+        tile = page_slice[tile * 0x10:(tile * 0x10) + 0x0F + 1]
+        plane0 = tile[0:8]
+        plane1 = tile[8:]
+        pixel_array = pygame.PixelArray(chr.image)
+
+        x = 0
+        y = 0
+        for (pixels0, pixels1) in zip(plane0, plane1):
+            ba_pixels0 = int2ba(pixels0, 8, 'little', 0)
+            ba_pixels1 = int2ba(pixels1, 8, 'little', 0)
+            for (pixel0, pixel1) in zip(ba_pixels0, ba_pixels1):
+                if pixel0 == 0 and pixel1 == 0:
+                    pixel_array[x, y] = chr.COLOR0
+                elif pixel0 == 1 and pixel1 == 0:
+                    pixel_array[x, y] = chr.COLOR1
+                elif pixel0 == 0 and pixel1 == 1:
+                    pixel_array[x, y] = chr.COLOR2
+                elif pixel0 == 1 and pixel1 == 1:
+                    pixel_array[x, y] = chr.COLOR3
+                x += 1
+            x = 0
+            y += 1
+        chr.image = pygame.transform.flip(chr.image, True, False)
+        return chr
 
 page = 0
 filename = None
@@ -11,7 +46,7 @@ for (opt, arg) in opts:
     if opt == '-f':
         filename = arg
     elif opt == '-p':
-        page = arg
+        page = int(arg)
 
 
 if filename is None:
@@ -48,27 +83,22 @@ try:
                 raise Exception()
 
         screen.fill("black")
-
+        tile = 0
+        tiles = []
         x = 0
         y = 0
+        for y in range(0, 240, 8):
+            for x in range(0, 256, 8):
+                chr = read_chr(rom, page, tile)
+                chr.rect.x = x
+                chr.rect.y = y
+                tiles.append(chr)
+                tile += 1
 
-        if page == '0':
-            r = range(0x0000, 0x0FFF, 16)
-        else:
-            r = range(0x1000, 0x1FFF, 16)
-
-        for n in r:
-            tile = Tile(rom[n if n != 0 else n+1:n+16])
-            tile.draw(screen, x, y)
-            x += 8
-            if x >= 256:
-                x = 0
-                y += 8
-
-            if y >= 240:
-                break
-
+        sprite_group = pygame.sprite.Group(tiles)
+        sprite_group.draw(screen)
         pygame.display.flip()
+        clock.tick(60)
 except Exception:
     pass
 finally:
