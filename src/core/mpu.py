@@ -658,7 +658,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"DEX {mode.name}")
 
-        self._x = self._x - 1
+        self._x = (self._x - 1) & 0xFF
 
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
@@ -667,7 +667,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"DEY {mode.name}")
 
-        self._y = self._y - 1
+        self._y = (self._y - 1) & 0xFF
 
         self._flags.update_sign(self._y)
         self._flags.update_zero(self._y)
@@ -1073,7 +1073,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TAX {mode.name}")
 
-        self._x = self._a
+        self._x = self._a & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1082,7 +1082,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TAY {mode.name}")
 
-        self._y = self._a
+        self._y = self._a & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1100,7 +1100,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TXA {mode.name}")
 
-        self._a = self._x
+        self._a = self._x & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1118,7 +1118,7 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TYA {mode.name}")
 
-        self._a = self._y
+        self._a = self._y & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1320,6 +1320,7 @@ class MPU:
             print(f"{instruction_addr:04x} {instruction:02x} {op.__qualname__}")
 
         op(addr_mode)
+
         end = time.time()
         return end - start
 

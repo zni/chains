@@ -44,3 +44,15 @@ class PPURAM(RAM):
             y += 1
         chr.image = pygame.transform.flip(chr.image, True, False)
         return chr
+
+    def read(self, loc) -> int:
+        try:
+            return self.store[loc]
+        except IndexError as e:
+            raise RuntimeError(f"Out of bounds read memory access {loc:04x} max {len(self.store):04x}") from e
+
+    def write(self, loc, data):
+        try:
+            self.store[loc] = data
+        except IndexError as e:
+            raise RuntimeError(f"Out of bounds write memory access {loc:04x} max {len(self.store):04x}") from e

@@ -30,13 +30,13 @@ class RAM:
         try:
             return self.store[self._mirror_map(loc)]
         except IndexError as e:
-            raise RuntimeError(f"Out of bounds read memory access {loc:04x}") from e
+            raise RuntimeError(f"Out of bounds read memory access {loc:04x} max {len(self.store):04x}") from e
 
     def write(self, loc, data):
         try:
             self.store[self._mirror_map(loc)] = data
         except IndexError as e:
-            raise RuntimeError(f"Out of bounds write memory access {loc:04x}") from e
+            raise RuntimeError(f"Out of bounds write memory access {loc:04x} max {len(self.store):04x}") from e
 
     def dma_transfer(self, page, to):
         base_address = (page << 8) & 0xFF00

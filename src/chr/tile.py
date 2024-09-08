@@ -36,5 +36,3 @@ class Tile:
                 x += 1
             x = x_offset
             y += 1
-
-        return (x, y)

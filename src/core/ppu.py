@@ -11,7 +11,7 @@ from memory.ppu_ram import PPURAM
 
 class PPUCtrl:
     def __init__(self):
-        self.nmi = 1
+        self._nmi = 0
         self.ppu = 0
         self.height = 0
         self.bg_select = 0
@@ -25,8 +25,16 @@ class PPUCtrl:
         self._nametable_select_hi = (nt & 0x02) >> 1
         self._nametable_select_lo = nt & 0x01
 
+    @property
+    def nametable_select(self) -> int:
+        return (self._nametable_select_hi << 1) | self._nametable_select_lo
+
+    @property
+    def nmi(self) -> bool:
+        return self._nmi == 1
+
     def write(self, loc:int, ctrl:int):
-        self.nmi = (ctrl & 0x80) >> 7
+        self._nmi = (ctrl & 0x80) >> 7
         self.ppu = (ctrl & 0x40) >> 6
         self.height = (ctrl & 0x20) >> 5
         self.bg_select = (ctrl & 0x10) >> 4
@@ -36,7 +44,7 @@ class PPUCtrl:
 
     def read(self, loc:int) -> int:
         register = bitarray([
-            self.nmi,
+            self._nmi,
             self.ppu,
             self.height,
             self.bg_select,
@@ -173,6 +181,7 @@ class PPUAddressData:
         self.addr = 0
         self.data = 0
         self.latch_addr = False
+        self.inc_mode = 0
 
     def set_ram(self, ram: PPURAM):
         self._ram = ram
@@ -188,13 +197,23 @@ class PPUAddressData:
             self.addr = (data & 0x00FF) | (self.addr & 0xFF00)
             self.latch_addr = False
         elif loc == PPUAddressData.DATA and not self.latch_addr:
+            self._addr_guardrails()
             self.data = data
             self._ram.write(self.addr, self.data)
-            self.addr = (self.addr + 1) & 0xFFFF
+            if self.inc_mode == 0:
+                inc = 1
+            else:
+                inc = 32
+            self.addr = (self.addr + inc) & 0xFFFF
+
+
+    def _addr_guardrails(self) -> int:
+        if self.addr < 0x2000 or self.addr > 0x3EFF:
+            self.addr = 0x2000
 
 class PPU:
 
-    NTSC = 0.0167
+    NTSC = 1 #0.0167
 
     def __init__(self):
         self._ram = None
@@ -221,10 +240,15 @@ class PPU:
         }
 
     def read(self, loc):
+        if loc == 0x2002:
+            self._ppuaddr.latch_addr = False
+
         return self.mmap[loc].read(loc)
 
     def write(self, loc, val):
         self.mmap[loc].write(loc, val)
+        if loc == 0x2000:
+            self._ppudata.inc_mode = self._ppuctrl.inc_mode
 
     def load(self, rom_buffer: BufferedReader, chr_size: int = 0):
         self._ram = PPURAM(size=0x3FFF)
@@ -239,40 +263,52 @@ class PPU:
 
     def trigger_nmi(self, cycle_seconds:float) -> bool:
         self._cycle_seconds += cycle_seconds
-        if self._cycle_seconds >= PPU.NTSC and self._ppuctrl.nmi == 1:
+        if self._cycle_seconds >= PPU.NTSC and self._ppuctrl.nmi:
             self._cycle_seconds = 0
-            self._ppuctrl.nmi = 0
+            # self._ppuctrl._nmi = 0
             self._ppustatus.vblank = 1
             return True
         else:
             return False
 
     def render(self, screen: pygame.Surface):
-        bg_tiles = []
-        bg_x = 0
-        bg_y = 0
-        bg_slice = self._ram.store[0x2000:0x23BF]
+        if self._ppuctrl.nametable_select == 0:
+            bg_slice = self._ram.store[0x2000:0x23BF]
+        elif self._ppuctrl.nametable_select == 1:
+            bg_slice = self._ram.store[0x23C0:0x27FF]
+        elif self._ppuctrl.nametable_select == 2:
+            bg_slice = self._ram.store[0x2800:0x2BFF]
+        elif self._ppuctrl.nametable_select == 3:
+            bg_slice = self._ram.store[0x2C00:0x3000]
+        else:
+            raise Exception("Invalid nametable.")
 
-        for n in bg_slice:
-            tile = self._ram.read_chr(self._ppuctrl.bg_select, n)
-            tile.rect.x = bg_x
-            tile.rect.y = bg_y
-            bg_x += 8
-            if bg_x >= 255:
-                bg_x = 0
-                bg_y += 8
-            bg_tiles.append(tile)
-        bg_group = pygame.sprite.Group(bg_tiles)
-        bg_group.draw(screen)
+        if self._ppumask.bg_enable == 1:
+            bg_tiles = []
+            bg_x = 0
+            bg_y = 0
+            for n in bg_slice:
+                tile = self._ram.read_chr(self._ppuctrl.bg_select, n)
+                tile.rect.x = bg_x
+                tile.rect.y = bg_y
+                bg_x += 8
+                if bg_x >= 255:
+                    bg_x = 0
+                    bg_y += 8
+                bg_tiles.append(tile)
+            bg_group = pygame.sprite.Group(bg_tiles)
+            bg_group.draw(screen)
+            pygame.display.flip()
 
-        group = pygame.sprite.Group()
-        tiles = []
-        for n in range(64):
-            chr = self._oam._oam_storage.read(n)
-            tile = self._ram.read_chr(self._ppuctrl.sprite_select, chr.tile_num)
-            tile.rect.x = chr.x
-            tile.rect.y = chr.y
-            tiles.append(tile)
+        if self._ppumask.sprite_enable == 1:
+            tiles = []
+            for n in range(64):
+                chr = self._oam._oam_storage.read(n)
+                tile = self._ram.read_chr(self._ppuctrl.sprite_select, chr.tile_num)
+                tile.rect.x = chr.x
+                tile.rect.y = chr.y
+                tiles.append(tile)
 
-        group.add(tiles)
-        group.draw(screen)
+            sprite_group = pygame.sprite.Group(tiles)
+            sprite_group.draw(screen)
+            pygame.display.flip()

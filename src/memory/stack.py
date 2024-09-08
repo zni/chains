@@ -14,10 +14,14 @@ class Stack:
 
     def push(self, data: int):
         self._ram.write(self._sp, data)
-        self._sp -= 1
+        self._decrement_sp()
 
     def pop(self) -> int:
-        self._sp += 1
-        word = self._ram.read(self._sp)
-        #self.sp += 1
-        return word
+        self._increment_sp()
+        return self._ram.read(self._sp)
+
+    def _decrement_sp(self):
+        self._sp = ((self._sp - 1) & 0xFF) | 0x0100
+
+    def _increment_sp(self):
+        self._sp = ((self._sp + 1) & 0xFF) | 0x0100
