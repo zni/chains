@@ -2,6 +2,7 @@ import time
 
 import pygame
 
+from chr.tile import Tile
 from exc.core import EndOfExecution
 from core.bus import Bus
 from core.mpu import MPU
@@ -18,6 +19,7 @@ class System:
 
     def start(self, trace: bool = False):
         pygame.init()
+        # flags = pygame.SHOWN | pygame.RESIZABLE
         screen = pygame.display.set_mode((256, 240))
         clock = pygame.time.Clock()
 
@@ -31,12 +33,17 @@ class System:
 
                 self._mpu.execute(trace=trace)
 
-                if self._ppu.trigger_nmi(clock.tick()):
+                if self._ppu.trigger_nmi(clock.tick(60) / 1000):
                     self._mpu.nmi()
+                    self._ppu.render(screen)
+                    pygame.display.flip()
+
         except EndOfExecution:
             pass
         except KeyboardInterrupt:
             self._mpu.dump()
+        except Exception as e:
+            raise e
         finally:
             pygame.quit()
 
@@ -52,3 +59,7 @@ class System:
 
             self._mpu.load(rom_buffer, header.prg_rom)
             self._ppu.load(rom_buffer, header.chr_rom)
+
+    def dump(self):
+        for n in range(0, 0x3FFF, 16):
+            print(self._ppu._ram.store[n : n+16])

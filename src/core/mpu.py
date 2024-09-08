@@ -1197,20 +1197,25 @@ class MPU:
 
     def _mode_zpiy(self):
         addr = self._zpage_addr_fetch()
-        ind_addr = self.bus.read(addr)
-        data = self.bus.read(ind_addr + self._y)
+        ind_addr_lo = self.bus.read(addr)
+        ind_addr_hi = self.bus.read(addr+1)
+        ind_addr = (ind_addr_hi << 8) | (ind_addr_lo & 0xFF)
+        index_offset = (ind_addr + self._y) & 0xFFFF
+        data = self.bus.read(index_offset)
 
         if self.trace:
+            print("_mode_zpiy")
             print(f"\tdata: {data:04x}")
-            print(f"\taddr: {ind_addr + self._y:04x}")
+            print(f"\taddr: {index_offset:04x}")
 
-        return (data, ind_addr + self._y)
+        return (data, index_offset)
 
     def _mode_absx(self):
         addr = self._addr_fetch()
         data = self.bus.read(addr + self._x)
 
         if self.trace:
+            print("_mode_absx")
             print(f"\tdata: {data:04x}")
             print(f"\taddr: {addr + self._x:04x}")
 
@@ -1221,6 +1226,7 @@ class MPU:
         data = self.bus.read(addr + self._y)
 
         if self.trace:
+            print("_mode_absy")
             print(f"\tdata: {data:04x}")
             print(f"\taddr: {addr + self._y:04x}")
 
@@ -1230,6 +1236,7 @@ class MPU:
         addr = self._zpage_addr_fetch()
         data = self.bus.read(addr + self._x)
         if self.trace:
+            print("_mode_zpx")
             print(f"\tdata: {data:04x}")
             print(f"\taddr: {addr + self._x:04x}")
         return (data, addr + self._x)
@@ -1239,6 +1246,7 @@ class MPU:
         data = self.bus.read(addr + self._y)
 
         if self.trace:
+            print("_mode_zpy")
             print(f"\tdata: {data:04x}")
             print(f"\taddr: {addr + self._y:04x}")
 

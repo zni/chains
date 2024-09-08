@@ -1,9 +1,12 @@
+import pygame
+
 from io import BufferedReader
 
 from bitarray import bitarray
 from bitarray.util import ba2int
 
-from memory.ram import RAM
+from memory.oam import OAMRAM
+from memory.ppu_ram import PPURAM
 
 
 class PPUCtrl:
@@ -101,7 +104,9 @@ class PPUStatus:
             0
         ])
 
-        return ba2int(register, False)
+        int_register = ba2int(register, False)
+        # self.vblank = 0
+        return int_register
 
 class OAM:
     ADDR = 0x2003
@@ -109,7 +114,7 @@ class OAM:
     DMA = 0x4014
 
     def __init__(self):
-        self._oam_storage = RAM(256)
+        self._oam_storage = OAMRAM()
         self.latch = False
 
         self.addr = 0
@@ -121,18 +126,21 @@ class OAM:
             return 0
 
         if loc == OAM.DATA:
-            return self._oam_storage.read(self.addr)
+            return 0
 
         if loc == OAM.DMA:
             return 0
 
     def write(self, loc:int, data:int):
+        self.latch = False
         if loc == OAM.ADDR:
             self.addr = data
         elif loc == OAM.DATA:
             self._oam_storage.write(self.addr, data)
             self.addr += 1
         elif loc == OAM.DMA:
+            print("OAM.DMA")
+            self.latch = True
             self.dma = data
 
 class PPUScroll:
@@ -162,7 +170,7 @@ class PPUAddressData:
         self.data = 0
         self.latch_addr = False
 
-    def set_ram(self, ram):
+    def set_ram(self, ram: PPURAM):
         self._ram = ram
 
     def read(self, loc:int):
@@ -179,7 +187,7 @@ class PPUAddressData:
             self.data = data
             print(f"PPUAddressData writing to {self.addr:04x}: {self.data:04x}")
             self._ram.write(self.addr, self.data)
-            self.addr = (self.addr + 1) % 0xFFFF
+            self.addr = (self.addr + 1) & 0xFFFF
 
 class PPU:
 
@@ -216,15 +224,15 @@ class PPU:
         self.mmap[loc].write(loc, val)
 
     def load(self, rom_buffer: BufferedReader, chr_size: int = 0):
-        self._ram = RAM(size=0x3FFF)
+        self._ram = PPURAM(size=0x3FFF)
         self._ppuaddr.set_ram(self._ram)
-
         mem_loc = 0
         chr_byte : bytes = rom_buffer.read1(1)
         while chr_byte and mem_loc < chr_size:
             chr_int = int.from_bytes(chr_byte, 'little')
             self._ram.write(mem_loc, chr_int)
             mem_loc += 1
+            chr_byte = rom_buffer.read1(1)
 
     def trigger_nmi(self, cycle_seconds:float) -> bool:
         self._cycle_seconds += cycle_seconds
@@ -235,3 +243,37 @@ class PPU:
             return True
         else:
             return False
+
+    def render(self, screen: pygame.Surface):
+        bg_tiles = []
+        bg_x = 0
+        bg_y = 0
+        bg_slice = self._ram.store[0x2000:0x23BF]
+
+        if not any(bg_slice):
+            return
+
+        for n in bg_slice:
+            tile = self._ram.read_chr(self._ppuctrl.bg_select, n)
+            tile.rect.x = bg_x
+            tile.rect.y = bg_y
+            bg_x += 8
+            if bg_x >= 255:
+                bg_x = 0
+                bg_y += 8
+            bg_tiles.append(tile)
+        bg_group = pygame.sprite.Group(bg_tiles)
+        bg_group.draw(screen)
+        return
+
+        group = pygame.sprite.Group()
+        tiles = []
+        for n in range(64):
+            chr = self._oam._oam_storage.read(n)
+            tile = self._ram.read_chr(self._ppuctrl.sprite_select, chr.tile_num)
+            tile.rect.x = chr.x
+            tile.rect.y = chr.y
+            tiles.append(tile)
+
+        group.add(tiles)
+        group.draw(screen)
