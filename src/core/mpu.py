@@ -8,6 +8,7 @@ from memory.ram import RAM
 from memory.stack import Stack
 from registers.pc import ProgramCounter
 from registers.status import FlagRegister
+from utils.sign import to_8bit_signed
 
 class MPU:
 
@@ -419,7 +420,7 @@ class MPU:
 
         if self._flags.carry == 0:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -429,7 +430,7 @@ class MPU:
 
         if self._flags.carry == 1:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -439,7 +440,7 @@ class MPU:
 
         if self._flags.zero == 1:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -466,7 +467,7 @@ class MPU:
 
         if self._flags.sign == 1:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -476,7 +477,7 @@ class MPU:
 
         if self._flags.zero == 0:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -486,7 +487,7 @@ class MPU:
 
         if self._flags.sign == 0:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -509,7 +510,7 @@ class MPU:
 
         if self._flags.overflow == 0:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -519,7 +520,7 @@ class MPU:
 
         if self._flags.overflow == 1:
             displacement = self.bus.read(self._pc.reg)
-            self._pc.displace_pc(self._to_signed(displacement))
+            self._pc.displace_pc(to_8bit_signed(displacement))
         else:
             self._pc.advance_pc()
 
@@ -745,7 +746,7 @@ class MPU:
 
     def _jsr(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
-            (_, addr) = self._mode_abs()
+            (data, addr) = self._mode_abs()
         else:
             raise IllegalAddressingMode(f"JSR {mode.name}")
 
@@ -973,6 +974,9 @@ class MPU:
         self._pc.set_pc_hi(pc_hi)
         self._pc.advance_pc()
 
+        if self.trace:
+            print(f"\treturning: {self._pc.reg:04x}")
+
     def _sbc(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
@@ -993,11 +997,10 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"SBC {mode.name}")
 
-        # TODO Revisit
         self._a = self._a - data - self._flags.carry
 
         self._flags.update_sign(self._a)
-        # TODO self._flags.update_overflow(self._a)
+        self._flags.update_overflow(self._a)
         self._flags.update_zero(self._a)
         self._flags.update_carry(self._a)
 
@@ -1106,10 +1109,10 @@ class MPU:
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TXS {mode.name}")
 
-        self._stack.sp = self._x
+        self._stack.set_sp(self._x)
 
-        self._flags.update_sign(self._stack.sp)
-        self._flags.update_zero(self._stack.sp)
+        self._flags.update_sign(self._stack._sp)
+        self._flags.update_zero(self._stack._sp)
 
     def _tya(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -1121,9 +1124,12 @@ class MPU:
         self._flags.update_zero(self._a)
 
     def _absix_fetch(self):
-        addr = self.bus.read(self._pc.reg)
+        addr_lo = self.bus.read(self._pc.reg)
         self._pc.advance_pc()
-        addr += self._x
+        addr_hi = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
+        addr = (addr_hi << 8) | (addr_lo)
+        addr = (addr + self._x) & 0xFFFF
         return addr
 
     def _data_fetch(self):
@@ -1148,26 +1154,31 @@ class MPU:
         data = self._data_fetch()
 
         if self.trace:
+            print("_mode_imm")
             print(f"\tdata: {data:04x}")
 
         return (data, None)
 
     def _mode_absix(self):
         addr = self._absix_fetch()
-        ind_addr = self.bus.read(addr)
-        data = self.bus.read(ind_addr)
+        ind_addr_lo = self.bus.read(addr)
+        ind_addr_hi = self.bus.read(addr+1)
+        addr = (ind_addr_hi << 8) | (ind_addr_lo)
+        data = self.bus.read(addr)
 
         if self.trace:
+            print("_mode_absix")
             print(f"\tdata: {data:04x}")
-            print(f"\taddr: {ind_addr:04x}")
+            print(f"\taddr: {addr:04x}")
 
-        return (data, ind_addr)
+        return (data, addr)
 
     def _mode_zp(self):
         addr = self._zpage_addr_fetch()
         data = self.bus.read(addr)
 
         if self.trace:
+            print("_mode_zp")
             print(f"\tdata: {data:04x}")
             print(f"\taddr: {addr:04x}")
 
@@ -1178,6 +1189,7 @@ class MPU:
         data = self.bus.read(addr)
 
         if self.trace:
+            print("_mode_abs")
             print(f"\tdata: {data:04x}")
             print(f"\taddr: {addr:04x}")
 
@@ -1190,6 +1202,7 @@ class MPU:
         ind_addr = (ind_addr_hi << 8) | (ind_addr_lo & 0xFF)
 
         if self.trace:
+            print("_mode_ind")
             print(f"\t    addr: {addr:04x}")
             print(f"\tind_addr: {ind_addr:04x}")
 
@@ -1212,62 +1225,65 @@ class MPU:
 
     def _mode_absx(self):
         addr = self._addr_fetch()
-        data = self.bus.read(addr + self._x)
+        indexed_addr = (addr + self._x) & 0xFFFF
+        data = self.bus.read(indexed_addr)
 
         if self.trace:
             print("_mode_absx")
             print(f"\tdata: {data:04x}")
-            print(f"\taddr: {addr + self._x:04x}")
+            print(f"\taddr: {indexed_addr:04x}")
 
-        return (data, addr + self._x)
+        return (data, indexed_addr)
 
     def _mode_absy(self):
         addr = self._addr_fetch()
-        data = self.bus.read(addr + self._y)
+        indexed_addr = (addr + self._y) & 0xFFFF
+        data = self.bus.read(indexed_addr)
 
         if self.trace:
             print("_mode_absy")
             print(f"\tdata: {data:04x}")
-            print(f"\taddr: {addr + self._y:04x}")
+            print(f"\taddr: {indexed_addr:04x}")
 
-        return (data, addr + self._y)
+        return (data, indexed_addr)
 
     def _mode_zpx(self):
         addr = self._zpage_addr_fetch()
-        data = self.bus.read(addr + self._x)
+        indexed_addr = (addr + self._x) & 0xFFFF
+        data = self.bus.read(indexed_addr)
+
         if self.trace:
             print("_mode_zpx")
             print(f"\tdata: {data:04x}")
-            print(f"\taddr: {addr + self._x:04x}")
-        return (data, addr + self._x)
+            print(f"\taddr: {indexed_addr:04x}")
+        return (data, indexed_addr)
 
     def _mode_zpy(self):
         addr = self._zpage_addr_fetch()
-        data = self.bus.read(addr + self._y)
+        indexed_addr = (addr + self._y) & 0xFFFF
+        data = self.bus.read(indexed_addr)
 
         if self.trace:
             print("_mode_zpy")
             print(f"\tdata: {data:04x}")
-            print(f"\taddr: {addr + self._y:04x}")
+            print(f"\taddr: {indexed_addr:04x}")
 
-        return (data, addr + self._y)
+        return (data, indexed_addr)
 
     def _mode_zpix(self):
-        ind_addr = self._zpage_addr_fetch()
-        addr = self.bus.read(ind_addr + self._x)
+        addr = self._zpage_addr_fetch()
+        indexed_addr = (addr + self._x) & 0xFFFF
+        addr_lo = self.bus.read(indexed_addr)
+        addr_hi = self.bus.read(indexed_addr+1)
+        addr = (addr_hi << 8) | (addr_lo & 0xFF)
         data = self.bus.read(addr)
 
         if self.trace:
+            print("_mode_zpix")
             print(f"\tdata: {data:04x}")
             print(f"\taddr: {addr:04x}")
 
         return (data, addr)
-
-    def _to_signed(self, n) -> int:
-        if n & 0x80:
-            return ((~n & 0xff) + 1) * -1
-        else:
-            return n
 
     def dump(self):
         print(f" P: 0b{self._flags.to_int():08b}")
@@ -1284,6 +1300,7 @@ class MPU:
             print(f"{ram[n+4]:02x} {ram[n+5]:02x} {ram[n+6]:02x} {ram[n+7]:02x}")
 
     def execute(self, trace=False):
+        start = time.time()
         self.trace = trace
 
         instruction_addr = self._pc.reg
@@ -1303,6 +1320,8 @@ class MPU:
             print(f"{instruction_addr:04x} {instruction:02x} {op.__qualname__}")
 
         op(addr_mode)
+        end = time.time()
+        return end - start
 
 
     def load(self, rom_buffer: BufferedReader, prg_size: int = 0, start_load: int = 0x8000):

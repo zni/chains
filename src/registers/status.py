@@ -1,6 +1,8 @@
 import bitarray
 import bitarray.util
 
+from utils.sign import to_signed
+
 class FlagRegister:
     def __init__(self):
         self.sign = 0
@@ -43,6 +45,14 @@ class FlagRegister:
                 self.carry = 1
             else:
                 self.carry = 0
+
+    def update_overflow(self, val):
+        signed = to_signed(val)
+
+        if signed >= 127 or signed <= -128:
+            self.overflow = 1
+        else:
+            self.overflow = 0
 
     def to_int(self):
         b = bitarray.bitarray([

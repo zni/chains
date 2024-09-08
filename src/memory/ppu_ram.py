@@ -17,11 +17,11 @@ class PPURAM(RAM):
             page = 0x1000
 
         chr = CHRObj()
-        page_slice = self.store[page:page + 0x0FFF]
+        page_slice = self.store[page:page + 0x0FFF + 1]
         # 0x0F was 16
-        tile = page_slice[tile * 0x0F:(tile * 0x0F) + 0x0F]
-        plane0 = tile[0:7]
-        plane1 = tile[8:16]
+        tile = page_slice[tile * 0x10:(tile * 0x10) + 0x0F + 1]
+        plane0 = tile[0:8]
+        plane1 = tile[8:]
         pixel_array = pygame.PixelArray(chr.image)
 
         x = 0
@@ -42,5 +42,5 @@ class PPURAM(RAM):
                 x += 1
             x = 0
             y += 1
-
+        chr.image = pygame.transform.flip(chr.image, True, False)
         return chr

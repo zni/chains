@@ -7,12 +7,21 @@ class Bus:
         self.ppu = ppu
 
     def read(self, loc:int) -> int:
-        if loc in self.ppu.mmap.keys():
+        loc = self._mirror_map_ppu(loc)
+
+        if loc in self.ppu.mmap:
             return self.ppu.read(loc)
         else:
             return self.prg_ram.read(loc)
 
+    def _mirror_map_ppu(self, loc:int) -> int:
+        if loc >= 0x2008 and loc <= 0x3FFF:
+            raise KeyboardInterrupt()
+        else:
+            return loc
+
     def write(self, loc:int, data:int):
+        loc = self._mirror_map_ppu(loc)
         if loc in self.ppu.mmap and loc != self.ppu._oam.DMA:
             self.ppu.write(loc, data)
         elif loc in self.ppu.mmap and loc == self.ppu._oam.DMA:

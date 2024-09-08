@@ -11,7 +11,7 @@ from memory.ppu_ram import PPURAM
 
 class PPUCtrl:
     def __init__(self):
-        self.nmi = 0
+        self.nmi = 1
         self.ppu = 0
         self.height = 0
         self.bg_select = 0
@@ -105,7 +105,12 @@ class PPUStatus:
         ])
 
         int_register = ba2int(register, False)
-        # self.vblank = 0
+
+        # TODO Revisit this.
+        if self.vblank == 0:
+            self.vblank = 1
+        else:
+            self.vblank = 0
         return int_register
 
 class OAM:
@@ -139,7 +144,6 @@ class OAM:
             self._oam_storage.write(self.addr, data)
             self.addr += 1
         elif loc == OAM.DMA:
-            print("OAM.DMA")
             self.latch = True
             self.dma = data
 
@@ -185,7 +189,6 @@ class PPUAddressData:
             self.latch_addr = False
         elif loc == PPUAddressData.DATA and not self.latch_addr:
             self.data = data
-            print(f"PPUAddressData writing to {self.addr:04x}: {self.data:04x}")
             self._ram.write(self.addr, self.data)
             self.addr = (self.addr + 1) & 0xFFFF
 
@@ -250,9 +253,6 @@ class PPU:
         bg_y = 0
         bg_slice = self._ram.store[0x2000:0x23BF]
 
-        if not any(bg_slice):
-            return
-
         for n in bg_slice:
             tile = self._ram.read_chr(self._ppuctrl.bg_select, n)
             tile.rect.x = bg_x
@@ -264,7 +264,6 @@ class PPU:
             bg_tiles.append(tile)
         bg_group = pygame.sprite.Group(bg_tiles)
         bg_group.draw(screen)
-        return
 
         group = pygame.sprite.Group()
         tiles = []

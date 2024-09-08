@@ -17,11 +17,10 @@ class System:
         self._bus = Bus(self._mpu._ram, self._ppu)
         self._mpu.bus = self._bus
 
-    def start(self, trace: bool = False):
+    def start(self, trace: bool = False, step: bool = False):
         pygame.init()
-        # flags = pygame.SHOWN | pygame.RESIZABLE
-        screen = pygame.display.set_mode((256, 240))
-        clock = pygame.time.Clock()
+        flags = pygame.SHOWN | pygame.RESIZABLE | pygame.SCALED
+        screen = pygame.display.set_mode((256, 240), flags=flags)
 
         self._mpu.reset()
         self._ppu._ppustatus.vblank = 1
@@ -31,9 +30,11 @@ class System:
                     if event.type == pygame.QUIT:
                         raise EndOfExecution()
 
-                self._mpu.execute(trace=trace)
+                elapsed = self._mpu.execute(trace=trace)
+                if step:
+                    input('')
 
-                if self._ppu.trigger_nmi(clock.tick(60) / 1000):
+                if self._ppu.trigger_nmi(elapsed):
                     self._mpu.nmi()
                     self._ppu.render(screen)
                     pygame.display.flip()
