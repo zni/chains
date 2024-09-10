@@ -21,3 +21,6 @@ class OAMRAM(RAM):
         oam_entry.x = self.store[oam_loc + 3]
 
         return oam_entry
+
+    def write(self, loc, data):
+        self.store[(loc & 0xFF)] = data

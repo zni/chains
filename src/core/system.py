@@ -3,7 +3,7 @@ import time
 import pygame
 
 from chr.tile import Tile
-from exc.core import EndOfExecution
+from exc.core import EndOfExecution, ReturnFromInterrupt
 from core.bus import Bus
 from core.mpu import MPU
 from core.ppu import PPU
@@ -16,6 +16,7 @@ class System:
         self._ppu = PPU()
         self._bus = Bus(self._mpu._ram, self._ppu)
         self._mpu.bus = self._bus
+        self.warmup = False
 
     def start(self, trace: bool = False, step: bool = False):
         pygame.init()
@@ -23,26 +24,40 @@ class System:
         screen = pygame.display.set_mode((256, 240), flags=flags)
 
         self._mpu.reset()
-        self._ppu._ppustatus.vblank = 1
+        self._ppu._ppustatus.vblank = 0
         try:
             while True:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         raise EndOfExecution()
 
-                elapsed = self._mpu.execute(trace=trace)
-                if step:
-                    input('')
+                for _ in range(10):
+                    try:
+                        self._mpu.execute(trace=trace)
+                        if step:
+                            input('')
+                    except ReturnFromInterrupt:
+                        pass
 
-                if self._ppu.trigger_nmi(elapsed):
+
+                if self._ppu._ppuctrl.nmi and self._ppu._ppustatus.vblank == 1:
                     self._mpu.nmi()
-                    self._ppu.render(screen)
-                    pygame.display.flip()
+                    while True:
+                        try:
+                            self._mpu.execute(trace=trace)
+                        except ReturnFromInterrupt:
+                            self._ppu._ppustatus.vblank = 0
+                        finally:
+                            break
+
+                self._ppu.render(screen)
+
 
         except EndOfExecution:
             pass
         except KeyboardInterrupt:
             self._mpu.dump()
+            self._ppu.dump()
         except Exception as e:
             raise e
         finally:
@@ -60,7 +75,3 @@ class System:
 
             self._mpu.load(rom_buffer, header.prg_rom)
             self._ppu.load(rom_buffer, header.chr_rom)
-
-    def dump(self):
-        for n in range(0, 0x3FFF, 16):
-            print(self._ppu._ram.store[n : n+16])

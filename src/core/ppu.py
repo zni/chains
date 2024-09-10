@@ -61,18 +61,26 @@ class PPUMask:
         self.blue = 0
         self.green = 0
         self.red = 0
-        self.sprite_enable = 0
-        self.bg_enable = 0
+        self._sprite_enable = 0
+        self._bg_enable = 0
         self.sprite_left_col = 0
         self.bg_left_col = 0
         self.greyscale = 0
+
+    @property
+    def sprite_enable(self) -> bool:
+        return self._sprite_enable == 1
+
+    @property
+    def bg_enable(self) -> bool:
+        return self._bg_enable == 1
 
     def write(self, loc:int, val:int):
         self.blue = (val & 0x80) >> 7
         self.green = (val & 0x40) >> 6
         self.red = (val & 0x20) >> 5
-        self.sprite_enable = (val & 0x10) >> 4
-        self.bg_enable = (val & 0x08) >> 3
+        self._sprite_enable = (val & 0x10) >> 4
+        self._bg_enable = (val & 0x08) >> 3
         self.sprite_left_col = (val & 0x04) >> 2
         self.bg_left_col = (val & 0x02) >> 1
         self.greyscale = (val & 0x01)
@@ -82,8 +90,8 @@ class PPUMask:
             self.blue,
             self.green,
             self.red,
-            self.sprite_enable,
-            self.bg_enable,
+            self._sprite_enable,
+            self._bg_enable,
             self.sprite_left_col,
             self.bg_left_col,
             self.greyscale
@@ -114,11 +122,6 @@ class PPUStatus:
 
         int_register = ba2int(register, False)
 
-        # TODO Revisit this.
-        if self.vblank == 0:
-            self.vblank = 1
-        else:
-            self.vblank = 0
         return int_register
 
 class OAM:
@@ -160,11 +163,13 @@ class PPUScroll:
         self.x = 0
         self.y = 0
         self.latch = False
+        self.data = 0
 
     def read(self, loc:int) -> int:
-        return 0
+        return self.data
 
     def write(self, loc:int, data:int):
+        self.data = data
         if not self.latch:
             self.x = data
             self.latch = True
@@ -187,9 +192,10 @@ class PPUAddressData:
         self._ram = ram
 
     def read(self, loc:int):
-        return 0
+        return self.data
 
     def write(self, loc:int, data:int):
+        self.data = data
         if loc == PPUAddressData.ADDR and not self.latch_addr:
             self.addr = (data << 8) & 0xFF00
             self.latch_addr = True
@@ -213,7 +219,7 @@ class PPUAddressData:
 
 class PPU:
 
-    NTSC = 1 #0.0167
+    RENDER = 0.2
 
     def __init__(self):
         self._ram = None
@@ -226,6 +232,9 @@ class PPU:
         self._ppuscroll = PPUScroll()
         self._ppuaddr = PPUAddressData()
         self._ppudata = self._ppuaddr
+
+        self.bg_x = 0
+        self.bg_y = 0
 
         self.mmap = {
             0x2000: self._ppuctrl,
@@ -242,6 +251,11 @@ class PPU:
     def read(self, loc):
         if loc == 0x2002:
             self._ppuaddr.latch_addr = False
+            self._ppuscroll.latch = False
+            if self._ppustatus.vblank == 1:
+                self._ppustatus.vblank = 0
+            else:
+                self._ppustatus.vblank = 1
 
         return self.mmap[loc].read(loc)
 
@@ -262,16 +276,24 @@ class PPU:
             chr_byte = rom_buffer.read1(1)
 
     def trigger_nmi(self, cycle_seconds:float) -> bool:
-        self._cycle_seconds += cycle_seconds
-        if self._cycle_seconds >= PPU.NTSC and self._ppuctrl.nmi:
+        if self._cycle_seconds >= PPU.RENDER:
             self._cycle_seconds = 0
             # self._ppuctrl._nmi = 0
-            self._ppustatus.vblank = 1
+            # self._ppustatus.vblank = 1
             return True
         else:
+            # self._ppustatus.vblank = 0
             return False
 
     def render(self, screen: pygame.Surface):
+        self._ppustatus.vblank = 0
+
+        if self.bg_y > 240:
+            self.bg_x = 0
+            self.bg_y = 0
+            self._ppustatus.vblank = 1
+            return
+
         if self._ppuctrl.nametable_select == 0:
             bg_slice = self._ram.store[0x2000:0x23BF]
         elif self._ppuctrl.nametable_select == 1:
@@ -283,24 +305,27 @@ class PPU:
         else:
             raise Exception("Invalid nametable.")
 
-        if self._ppumask.bg_enable == 1:
-            bg_tiles = []
-            bg_x = 0
-            bg_y = 0
-            for n in bg_slice:
+        bg_tiles = []
+        if self._ppumask.bg_enable:
+            offset_y = (self.bg_y // 8) * 32 if self.bg_y != 0 else 0
+            scanline = bg_slice[offset_y:offset_y + 32]
+            for n in scanline:
                 tile = self._ram.read_chr(self._ppuctrl.bg_select, n)
-                tile.rect.x = bg_x
-                tile.rect.y = bg_y
-                bg_x += 8
-                if bg_x >= 255:
-                    bg_x = 0
-                    bg_y += 8
+                tile.rect.x = self.bg_x
+                tile.rect.y = self.bg_y
                 bg_tiles.append(tile)
-            bg_group = pygame.sprite.Group(bg_tiles)
-            bg_group.draw(screen)
-            pygame.display.flip()
 
-        if self._ppumask.sprite_enable == 1:
+                self.bg_x += 8
+                if self.bg_x >= 255:
+                    self.bg_x = 0
+                    break
+        self.bg_y += 8
+        bg_group = pygame.sprite.Group(bg_tiles)
+        bg_group.draw(screen)
+        pygame.display.flip()
+        return
+
+        if self._ppumask.sprite_enable:
             tiles = []
             for n in range(64):
                 chr = self._oam._oam_storage.read(n)
@@ -312,3 +337,8 @@ class PPU:
             sprite_group = pygame.sprite.Group(tiles)
             sprite_group.draw(screen)
             pygame.display.flip()
+
+    def dump(self):
+        print(self._ram.store[0x2000:0x23BF])
+        print(self._ram.store[0x23C0:0x27FF])
+        print(self._oam._oam_storage.store)

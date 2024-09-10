@@ -6,3 +6,6 @@ class IllegalAddressingMode(Exception):
 
 class InvalidROM(Exception):
     pass
+
+class ReturnFromInterrupt(Exception):
+    pass

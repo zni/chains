@@ -3,7 +3,7 @@ from io import BufferedReader
 
 from .modes import AddressingMode
 
-from exc.core import IllegalAddressingMode, EndOfExecution
+from exc.core import IllegalAddressingMode, EndOfExecution, ReturnFromInterrupt
 from memory.ram import RAM
 from memory.stack import Stack
 from registers.pc import ProgramCounter
@@ -355,9 +355,11 @@ class MPU:
             raise IllegalAddressingMode(f"ADC {mode.name}")
 
         self._a = self._a + data + self._flags.carry
-        if self._a & 0xFF00:
-            self._flags.carry = 1
-            self._a = self._a & 0xFF
+
+        self._flags.update_carry(self._a)
+        self._flags.update_sign(self._a)
+        self._flags.update_zero(self._a)
+        self._flags.update_overflow(self._a)
 
     def _and(self, mode: AddressingMode):
         data = 0
@@ -381,6 +383,8 @@ class MPU:
             raise IllegalAddressingMode(f"AND {mode.name}")
 
         self._a = (self._a & data) & 0xFF
+        self._flags.update_sign(self._a)
+        self._flags.update_zero(self._a)
 
     def _asl(self, mode: AddressingMode):
         if mode == AddressingMode.ACC:
@@ -412,6 +416,9 @@ class MPU:
             self._flags.carry = 1
         else:
             shifted &= 0xFF
+
+        self._flags.update_zero(shifted)
+        self._flags.update_sign(shifted)
         return shifted
 
     def _bcc(self, mode: AddressingMode):
@@ -456,10 +463,7 @@ class MPU:
         self._flags.sign = (data & 0x80) >> 7
 
         result = self._a & data
-        if result == 0:
-            self._flags.zero = 1
-        else:
-            self._flags.zero = 0
+        self._flags.update_zero(result)
 
     def _bmi(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
@@ -648,7 +652,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"DEC {mode.name}")
 
-        result = data - 1
+        result = (data - 1) & 0xFF
         self.bus.write(addr, result)
 
         self._flags.update_sign(result)
@@ -964,6 +968,7 @@ class MPU:
         self._flags.update_flags(self._stack.pop())
         self._pc.set_pc_lo(self._stack.pop())
         self._pc.set_pc_hi(self._stack.pop())
+        raise ReturnFromInterrupt()
 
     def _rts(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:

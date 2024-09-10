@@ -2,7 +2,7 @@ class RAM:
     def __init__(self, size: int = 0xFFFF):
         self.store = []
         for _ in range(size + 1):
-            self.store.append(0)
+            self.store.append(0x0)
 
     def _mirror_map(self, loc) -> int:
         if loc >= 0x0000 and loc <= 0x07FFF:
@@ -24,7 +24,7 @@ class RAM:
     def set_size(self, size: int = 0xFFFF):
         self.store = []
         for _ in range(size + 1):
-            self.store.append(0)
+            self.store.append(0x0)
 
     def read(self, loc) -> int:
         try:
@@ -42,5 +42,7 @@ class RAM:
         base_address = (page << 8) & 0xFF00
         end_address = base_address | 0x00FF
 
+        to_loc = 0
         for n in range(base_address, end_address + 1):
-            self.store[n] = to.store[n & 0xFF]
+            self.store[n] = to.store[to_loc]
+            to_loc += 1
