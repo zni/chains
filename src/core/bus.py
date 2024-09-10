@@ -10,6 +10,7 @@ class Bus:
         loc = self._mirror_map_ppu(loc)
 
         if loc in self.ppu.mmap:
+            # print(f"read from {type(self.ppu.mmap[loc]).__name__} {loc:04x}")
             return self.ppu.read(loc)
         else:
             return self.prg_ram.read(loc)
@@ -24,6 +25,7 @@ class Bus:
         loc = self._mirror_map_ppu(loc)
         if loc in self.ppu.mmap and loc != self.ppu._oam.DMA:
             self.ppu.write(loc, data)
+            # print(f"write to {type(self.ppu.mmap[loc]).__name__} {loc:04x}")
         elif loc in self.ppu.mmap and loc == self.ppu._oam.DMA:
             self.ppu.write(loc, data)
             self.prg_ram.dma_transfer(
