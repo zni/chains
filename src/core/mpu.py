@@ -1336,7 +1336,7 @@ class MPU:
         mem_loc = start_load
         prg_read_size = 1
         while buffer and prg_read_size < prg_size:
-            self._ram.write(mem_loc, int.from_bytes(buffer, 'little') & 0xFF)
+            self._ram.write(mem_loc, int.from_bytes(buffer, 'big') & 0xFF)
             buffer = rom_buffer.read1(1)
             mem_loc += 1
             prg_read_size += 1

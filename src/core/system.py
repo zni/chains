@@ -20,7 +20,7 @@ class System:
 
     def start(self, trace: bool = False, step: bool = False):
         pygame.init()
-        flags = pygame.SHOWN | pygame.RESIZABLE | pygame.SCALED
+        flags = pygame.SHOWN | pygame.RESIZABLE #| pygame.SCALED
         screen = pygame.display.set_mode((256, 240), flags=flags)
 
         self._mpu.reset()
@@ -31,26 +31,17 @@ class System:
                     if event.type == pygame.QUIT:
                         raise EndOfExecution()
 
-                for _ in range(10):
+                for _ in range(113):
                     try:
                         self._mpu.execute(trace=trace)
-                        if step:
-                            input('')
                     except ReturnFromInterrupt:
-                        pass
+                        break
 
-
-                if self._ppu._ppuctrl.nmi and self._ppu._ppustatus.vblank == 1:
-                    self._mpu.nmi()
-                    while True:
-                        try:
-                            self._mpu.execute(trace=trace)
-                        except ReturnFromInterrupt:
-                            self._ppu._ppustatus.vblank = 0
-                        finally:
-                            break
+                self.nmi(trace)
 
                 self._ppu.render(screen)
+
+                self.nmi(trace)
 
 
         except EndOfExecution:
@@ -63,6 +54,17 @@ class System:
         finally:
             pygame.quit()
 
+    def nmi(self, trace):
+        if self._ppu.trigger_nmi():
+            self._mpu.nmi()
+            while True:
+                try:
+                    self._mpu.execute(trace=trace)
+                except ReturnFromInterrupt:
+                    pass
+                finally:
+                    break
+
     def reset(self):
         self._mpu.reset()
 
@@ -70,6 +72,7 @@ class System:
         with open(rom, 'rb') as rom_buffer:
             header = INESHeader(rom_buffer)
             header.read()
+            header.dump()
 
             rom_buffer.seek(0)
 

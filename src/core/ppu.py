@@ -142,7 +142,7 @@ class OAM:
             return 0
 
         if loc == OAM.DATA:
-            return 0
+            return self._oam_storage.store[self.addr]
 
         if loc == OAM.DMA:
             return 0
@@ -218,9 +218,6 @@ class PPUAddressData:
             self.addr = 0x2000
 
 class PPU:
-
-    RENDER = 0.2
-
     def __init__(self):
         self._ram = None
         self._cycle_seconds = 0
@@ -235,6 +232,8 @@ class PPU:
 
         self.bg_x = 0
         self.bg_y = 0
+
+        self.scanline = 0
 
         self.mmap = {
             0x2000: self._ppuctrl,
@@ -275,70 +274,74 @@ class PPU:
             mem_loc += 1
             chr_byte = rom_buffer.read1(1)
 
-    def trigger_nmi(self, cycle_seconds:float) -> bool:
-        if self._cycle_seconds >= PPU.RENDER:
-            self._cycle_seconds = 0
-            # self._ppuctrl._nmi = 0
-            # self._ppustatus.vblank = 1
+    def trigger_nmi(self) -> bool:
+        if self._ppustatus.vblank and self._ppuctrl.nmi:
             return True
         else:
-            # self._ppustatus.vblank = 0
             return False
 
     def render(self, screen: pygame.Surface):
         self._ppustatus.vblank = 0
 
-        if self.bg_y > 240:
+        if self.scanline > 240:
             self.bg_x = 0
             self.bg_y = 0
+            self.scanline = 0
+            self._ppustatus.sprite_0_hit = 0
             self._ppustatus.vblank = 1
             return
 
         if self._ppuctrl.nametable_select == 0:
-            bg_slice = self._ram.store[0x2000:0x23BF]
+            nametable_slice = self._ram.store[0x2000:0x23C0]
         elif self._ppuctrl.nametable_select == 1:
-            bg_slice = self._ram.store[0x23C0:0x27FF]
+            print("nametable A")
+            nametable_slice = self._ram.store[0x2400:0x27C0]
         elif self._ppuctrl.nametable_select == 2:
-            bg_slice = self._ram.store[0x2800:0x2BFF]
+            print("nametable B")
+            nametable_slice = self._ram.store[0x2800:0x2BC0]
         elif self._ppuctrl.nametable_select == 3:
-            bg_slice = self._ram.store[0x2C00:0x3000]
+            nametable_slice = self._ram.store[0x2C00:0x2FC0]
         else:
             raise Exception("Invalid nametable.")
 
-        bg_tiles = []
-        if self._ppumask.bg_enable:
+        nametable_tiles = []
+        if self.bg_y < 240:
             offset_y = (self.bg_y // 8) * 32 if self.bg_y != 0 else 0
-            scanline = bg_slice[offset_y:offset_y + 32]
-            for n in scanline:
-                tile = self._ram.read_chr(self._ppuctrl.bg_select, n)
+            nametable_row = nametable_slice[offset_y:offset_y + 32]
+            for tile_num in nametable_row:
+                tile = self._ram.read_chr(self._ppuctrl.bg_select, tile_num)
                 tile.rect.x = self.bg_x
                 tile.rect.y = self.bg_y
-                bg_tiles.append(tile)
+                nametable_tiles.append(tile)
 
                 self.bg_x += 8
                 if self.bg_x >= 255:
                     self.bg_x = 0
                     break
         self.bg_y += 8
-        bg_group = pygame.sprite.Group(bg_tiles)
-        bg_group.draw(screen)
+        nametable_group = pygame.sprite.Group(nametable_tiles)
+        nametable_group.draw(screen)
         pygame.display.flip()
-        return
 
         if self._ppumask.sprite_enable:
             tiles = []
-            for n in range(64):
-                chr = self._oam._oam_storage.read(n)
+            for tile in range(64):
+                chr = self._oam._oam_storage.read(tile)
                 tile = self._ram.read_chr(self._ppuctrl.sprite_select, chr.tile_num)
                 tile.rect.x = chr.x
                 tile.rect.y = chr.y
-                tiles.append(tile)
+                if chr.y == self.scanline:
+                    tiles.append(tile)
+                else:
+                    continue
 
             sprite_group = pygame.sprite.Group(tiles)
             sprite_group.draw(screen)
             pygame.display.flip()
 
+        self.scanline += 1
+
     def dump(self):
         print(self._ram.store[0x2000:0x23BF])
-        print(self._ram.store[0x23C0:0x27FF])
+        print(self._ram.store[0x2800:0x2BFF])
         print(self._oam._oam_storage.store)

@@ -23,4 +23,6 @@ class OAMRAM(RAM):
         return oam_entry
 
     def write(self, loc, data):
-        self.store[(loc & 0xFF)] = data
+        if data != 0:
+            print("non-zero OAM data")
+        self.store[loc] = data

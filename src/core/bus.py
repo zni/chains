@@ -17,7 +17,7 @@ class Bus:
 
     def _mirror_map_ppu(self, loc:int) -> int:
         if loc >= 0x2008 and loc <= 0x3FFF:
-            raise KeyboardInterrupt()
+            return ((loc % 0x2000) % 8) | 0x2000
         else:
             return loc
 
