@@ -9,3 +9,6 @@ class InvalidROM(Exception):
 
 class ReturnFromInterrupt(Exception):
     pass
+
+class RaisedNMI(Exception):
+    pass

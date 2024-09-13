@@ -1,19 +1,21 @@
-from core.ppu import PPU
-from memory.ram import RAM
+from typing import Dict, Callable
+
+from core.bus_member import BusMember
+from memory.oam import OAM
 
 class Bus:
-    def __init__(self, prg_ram:RAM, ppu:PPU):
-        self.prg_ram = prg_ram
+    def __init__(self, mpu: BusMember, ppu: BusMember, mmap: Dict[int, Callable]):
+        self.mpu = mpu
         self.ppu = ppu
+        self.mmap = mmap
 
     def read(self, loc:int) -> int:
         loc = self._mirror_map_ppu(loc)
 
-        if loc in self.ppu.mmap:
-            # print(f"read from {type(self.ppu.mmap[loc]).__name__} {loc:04x}")
+        if loc in self.mmap:
             return self.ppu.read(loc)
         else:
-            return self.prg_ram.read(loc)
+            return self.mpu.read(loc)
 
     def _mirror_map_ppu(self, loc:int) -> int:
         if loc >= 0x2008 and loc <= 0x3FFF:
@@ -21,16 +23,18 @@ class Bus:
         else:
             return loc
 
-    def write(self, loc:int, data:int):
+    def write(self, loc:int, data:int) -> None:
         loc = self._mirror_map_ppu(loc)
-        if loc in self.ppu.mmap and loc != self.ppu._oam.DMA:
+        if loc in self.mmap and loc != OAM.DMA:
             self.ppu.write(loc, data)
-            # print(f"write to {type(self.ppu.mmap[loc]).__name__} {loc:04x}")
-        elif loc in self.ppu.mmap and loc == self.ppu._oam.DMA:
+        elif loc in self.mmap and loc == OAM.DMA:
             self.ppu.write(loc, data)
-            self.prg_ram.dma_transfer(
-                self.ppu._oam.dma,
-                self.ppu._oam._oam_storage
+            self.mpu.dma_transfer(
+                self.ppu.read(OAM.DMA),
+                self.ppu
             )
         else:
-            self.prg_ram.write(loc, data)
+            self.mpu.write(loc, data)
+
+    def nmi(self) -> None:
+        self.mpu.nmi()

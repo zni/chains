@@ -1,5 +1,8 @@
+import string
+
 class RAM:
     def __init__(self, size: int = 0xFFFF):
+        self.size = size
         self.store = []
         for _ in range(size + 1):
             self.store.append(0x0)
@@ -15,11 +18,6 @@ class RAM:
             return loc - 0x1800
         else:
             return loc
-
-        # base_slice = self.store[0x0000:0x07FF]
-        # self.store[0x0800:0x0FFF] = base_slice
-        # self.store[0x1000:0x17FF] = base_slice
-        # self.store[0x1800:0x1FFF] = base_slice
 
     def set_size(self, size: int = 0xFFFF):
         self.store = []
@@ -44,5 +42,16 @@ class RAM:
 
         to_loc = 0
         for n in range(base_address, end_address + 1):
-            self.store[n] = to.store[to_loc]
+            to.write(to_loc, self.store[n])
             to_loc += 1
+
+    def dump(self, file=None) -> None:
+        print(type(self).__name__)
+        for n in range(0, len(self.store), 16):
+            ram_slice = self.store[n : n + 16]
+
+            print(
+                f"{n:04x}",
+                " ".join(f"{x:02x}" for x in ram_slice), "|",
+                "".join(chr(x) if chr(x) in "".join([string.digits, string.ascii_letters, string.punctuation]) else '.' for x in ram_slice)
+            )

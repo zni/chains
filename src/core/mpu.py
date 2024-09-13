@@ -1,8 +1,9 @@
 import time
 from io import BufferedReader
 
-from .modes import AddressingMode
-
+from core.bus_member import BusMember
+from core.bus import Bus
+from core.modes import AddressingMode
 from exc.core import IllegalAddressingMode, EndOfExecution, ReturnFromInterrupt
 from memory.ram import RAM
 from memory.stack import Stack
@@ -10,9 +11,7 @@ from registers.pc import ProgramCounter
 from registers.status import FlagRegister
 from utils.sign import to_8bit_signed
 
-class MPU:
-
-    CYCLE = 0.0006
+class MPU(BusMember):
 
     def __init__(self):
         self.trace = False
@@ -24,8 +23,7 @@ class MPU:
         self._flags = FlagRegister()
         self._ram = RAM()
         self._stack = Stack(self._ram)
-
-        self.bus = None
+        self.bus: Bus
 
         # https://en.wikipedia.org/wiki/MOS_Technology_6502#Instruction_table
         self._lookup_table = [
@@ -333,6 +331,9 @@ class MPU:
             ]
         ]
 
+    def set_bus(self, bus: Bus):
+        self.bus = bus
+
     def _adc(self, mode: AddressingMode):
         data = 0
         if mode == AddressingMode.ABSIX:
@@ -360,6 +361,8 @@ class MPU:
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
         self._flags.update_overflow(self._a)
+
+        self._a &= 0xFF
 
     def _and(self, mode: AddressingMode):
         data = 0
@@ -696,7 +699,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"EOR {mode.name}")
 
-        self._a = self._a ^ data
+        self._a = (self._a ^ data) & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -784,7 +787,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"LDA {mode.name}")
 
-        self._a = data
+        self._a = data & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -850,13 +853,11 @@ class MPU:
         if addr is not None:
             self.bus.write(addr, data)
         else:
-            self._a = data
+            self._a = data & 0xFF
 
     def _nop(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"NOP {mode.name}")
-
-        time.sleep(MPU.CYCLE * 2)
 
     def _ora(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
@@ -878,7 +879,7 @@ class MPU:
         else:
             raise IllegalAddressingMode(f"ORA {mode.name}")
 
-        self._a = self._a | data
+        self._a = (self._a | data) & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -933,7 +934,7 @@ class MPU:
         if addr is not None:
             self.bus.write(addr, data)
         else:
-            self._a = data
+            self._a = data & 0xFF
 
 
     def _ror(self, mode: AddressingMode):
@@ -959,7 +960,7 @@ class MPU:
         if addr is not None:
             self.bus.write(addr, data)
         else:
-            self._a = data
+            self._a = data & 0xFF
 
     def _rti(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -1296,13 +1297,6 @@ class MPU:
         print(f" A: 0x{self._a:04x}")
         print(f" X: 0x{self._x:04x}")
         print(f" Y: 0x{self._y:04x}")
-        self.dump_mem()
-
-    def dump_mem(self):
-        ram = self._ram.store
-        for n in range(self._pc.reg, self._pc.reg + 16, 8):
-            print(f"{ram[n]:02x} {ram[n+1]:02x} {ram[n+2]:02x} {ram[n+3]:02x}", end=' ')
-            print(f"{ram[n+4]:02x} {ram[n+5]:02x} {ram[n+6]:02x} {ram[n+7]:02x}")
 
     def execute(self, trace=False):
         start = time.time()
@@ -1335,7 +1329,7 @@ class MPU:
         buffer : bytes = rom_buffer.read1(1)
         mem_loc = start_load
         prg_read_size = 1
-        while buffer and prg_read_size < prg_size:
+        while buffer and prg_read_size < prg_size and prg_read_size <= len(self._ram.store):
             self._ram.write(mem_loc, int.from_bytes(buffer, 'big') & 0xFF)
             buffer = rom_buffer.read1(1)
             mem_loc += 1
@@ -1356,7 +1350,7 @@ class MPU:
         self._x = 0
         self._y = 0
 
-    def nmi(self):
+    def nmi(self) -> None:
         self._stack.push(self._pc.pc_hi())
         self._stack.push(self._pc.pc_lo())
         self._stack.push(self._flags.to_int())
@@ -1365,18 +1359,11 @@ class MPU:
         if self.trace:
             print("NMI")
 
-    def run(self, trace=False):
-        execution_cycle = 0
-        try:
-            while True:
-                pre = time.time()
-                self.execute(trace=trace)
-                post = time.time()
-                elapsed = post - pre
-                if MPU.CYCLE > elapsed:
-                    time.sleep(MPU.CYCLE - elapsed)
-                execution_cycle += 1
-        except EndOfExecution:
-            return execution_cycle
-        except KeyboardInterrupt:
-            return execution_cycle
+    def read(self, loc:int) -> int:
+        return self._ram.read(loc)
+
+    def write(self, loc:int, data:int) -> None:
+        self._ram.write(loc, data)
+
+    def dma_transfer(self, page: int, to: BusMember) -> None:
+        self._ram.dma_transfer(page, to)

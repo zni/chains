@@ -1,9 +1,7 @@
-import time
-
 import pygame
 
 from chr.tile import Tile
-from exc.core import EndOfExecution, ReturnFromInterrupt
+from exc.core import EndOfExecution, RaisedNMI, ReturnFromInterrupt
 from core.bus import Bus
 from core.mpu import MPU
 from core.ppu import PPU
@@ -14,38 +12,38 @@ class System:
     def __init__(self):
         self._mpu = MPU()
         self._ppu = PPU()
-        self._bus = Bus(self._mpu._ram, self._ppu)
-        self._mpu.bus = self._bus
-        self.warmup = False
+        self._bus = Bus(self._mpu, self._ppu, self._ppu.mmap)
+        self._mpu.set_bus(self._bus)
+        self._ppu.set_bus(self._bus)
 
     def start(self, trace: bool = False, step: bool = False):
         pygame.init()
-        flags = pygame.SHOWN | pygame.RESIZABLE #| pygame.SCALED
+        flags = pygame.SHOWN | pygame.RESIZABLE | pygame.SCALED
         screen = pygame.display.set_mode((256, 240), flags=flags)
 
         self._mpu.reset()
-        self._ppu._ppustatus.vblank = 0
         try:
             while True:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         raise EndOfExecution()
 
-                for _ in range(113):
+                for _ in range(2000):
                     try:
-                        self._mpu.execute(trace=trace)
+                        self._mpu.execute(trace)
                     except ReturnFromInterrupt:
                         break
 
-                self.nmi(trace)
-
-                self._ppu.render(screen)
-
-                self.nmi(trace)
+                for _ in range(20):
+                    try:
+                        self._ppu.render(screen)
+                    except RaisedNMI:
+                        break
 
 
         except EndOfExecution:
-            pass
+            self._mpu.dump()
+            self._ppu.dump()
         except KeyboardInterrupt:
             self._mpu.dump()
             self._ppu.dump()
@@ -53,20 +51,6 @@ class System:
             raise e
         finally:
             pygame.quit()
-
-    def nmi(self, trace):
-        if self._ppu.trigger_nmi():
-            self._mpu.nmi()
-            while True:
-                try:
-                    self._mpu.execute(trace=trace)
-                except ReturnFromInterrupt:
-                    pass
-                finally:
-                    break
-
-    def reset(self):
-        self._mpu.reset()
 
     def load(self, rom: str):
         with open(rom, 'rb') as rom_buffer:

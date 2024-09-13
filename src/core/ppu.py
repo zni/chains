@@ -1,11 +1,15 @@
 import pygame
 
 from io import BufferedReader
+from typing import Literal
 
 from bitarray import bitarray
 from bitarray.util import ba2int
 
-from memory.oam import OAMRAM
+from exc.core import RaisedNMI
+from core.bus import Bus
+from core.bus_member import BusMember
+from memory.oam import OAM
 from memory.ppu_ram import PPURAM
 
 
@@ -101,16 +105,23 @@ class PPUMask:
 
 class PPUStatus:
     def __init__(self):
-        self.vblank = 0
+        self._vblank = 0
         self.sprite_0_hit = 0
         self.sprite_overflow = 0
+
+    @property
+    def vblank(self):
+        return self._vblank == 1
+
+    def set_vblank(self, val:Literal[1,0]):
+        self._vblank = val
 
     def write(self, loc, val):
         return None
 
     def read(self, loc) -> int:
         register = bitarray([
-            self.vblank,
+            self._vblank,
             self.sprite_0_hit,
             self.sprite_overflow,
             0,
@@ -123,40 +134,6 @@ class PPUStatus:
         int_register = ba2int(register, False)
 
         return int_register
-
-class OAM:
-    ADDR = 0x2003
-    DATA = 0x2004
-    DMA = 0x4014
-
-    def __init__(self):
-        self._oam_storage = OAMRAM()
-        self.latch = False
-
-        self.addr = 0
-        self.data = 0
-        self.dma = 0
-
-    def read(self, loc:int) -> int:
-        if loc == OAM.ADDR:
-            return 0
-
-        if loc == OAM.DATA:
-            return self._oam_storage.store[self.addr]
-
-        if loc == OAM.DMA:
-            return 0
-
-    def write(self, loc:int, data:int):
-        self.latch = False
-        if loc == OAM.ADDR:
-            self.addr = data
-        elif loc == OAM.DATA:
-            self._oam_storage.write(self.addr, data)
-            self.addr += 1
-        elif loc == OAM.DMA:
-            self.latch = True
-            self.dma = data
 
 class PPUScroll:
     def __init__(self):
@@ -182,11 +159,12 @@ class PPUAddressData:
     DATA = 0x2007
 
     def __init__(self):
-        self._ram = None
         self.addr = 0
         self.data = 0
         self.latch_addr = False
         self.inc_mode = 0
+
+        self._ram: PPURAM
 
     def set_ram(self, ram: PPURAM):
         self._ram = ram
@@ -203,7 +181,6 @@ class PPUAddressData:
             self.addr = (data & 0x00FF) | (self.addr & 0xFF00)
             self.latch_addr = False
         elif loc == PPUAddressData.DATA and not self.latch_addr:
-            self._addr_guardrails()
             self.data = data
             self._ram.write(self.addr, self.data)
             if self.inc_mode == 0:
@@ -212,14 +189,14 @@ class PPUAddressData:
                 inc = 32
             self.addr = (self.addr + inc) & 0xFFFF
 
-
     def _addr_guardrails(self) -> int:
         if self.addr < 0x2000 or self.addr > 0x3EFF:
-            self.addr = 0x2000
+            return 0x2000
+        else:
+            return self.addr
 
-class PPU:
+class PPU(BusMember):
     def __init__(self):
-        self._ram = None
         self._cycle_seconds = 0
 
         self._ppuctrl = PPUCtrl()
@@ -247,19 +224,28 @@ class PPU:
             0x4014: self._oam
         }
 
+        self._ram: PPURAM
+        self._bus: Bus
+
+    def set_ram(self, val: PPURAM):
+        self._ram = val
+
+    def set_bus(self, val: Bus):
+        self._bus = val
+
     def read(self, loc):
         if loc == 0x2002:
             self._ppuaddr.latch_addr = False
             self._ppuscroll.latch = False
-            if self._ppustatus.vblank == 1:
-                self._ppustatus.vblank = 0
-            else:
-                self._ppustatus.vblank = 1
 
         return self.mmap[loc].read(loc)
 
     def write(self, loc, val):
-        self.mmap[loc].write(loc, val)
+        if loc in self.mmap:
+            self.mmap[loc].write(loc, val)
+        else:
+            self.mmap[OAM.DMA]._oam_storage.write(loc, val)
+
         if loc == 0x2000:
             self._ppudata.inc_mode = self._ppuctrl.inc_mode
 
@@ -274,22 +260,22 @@ class PPU:
             mem_loc += 1
             chr_byte = rom_buffer.read1(1)
 
-    def trigger_nmi(self) -> bool:
+    def nmi(self) -> None:
         if self._ppustatus.vblank and self._ppuctrl.nmi:
-            return True
-        else:
-            return False
+            self._bus.nmi()
 
     def render(self, screen: pygame.Surface):
-        self._ppustatus.vblank = 0
-
-        if self.scanline > 240:
+        if self.scanline > 240 and self.scanline <= 260:
+            self.scanline += 1
+            self._ppustatus.set_vblank(1)
+            self.nmi()
+            raise RaisedNMI()
+        elif self.scanline > 260:
+            self.scanline = 0
             self.bg_x = 0
             self.bg_y = 0
-            self.scanline = 0
             self._ppustatus.sprite_0_hit = 0
-            self._ppustatus.vblank = 1
-            return
+            self._ppustatus.set_vblank(0)
 
         if self._ppuctrl.nametable_select == 0:
             nametable_slice = self._ram.store[0x2000:0x23C0]
@@ -300,12 +286,13 @@ class PPU:
             print("nametable B")
             nametable_slice = self._ram.store[0x2800:0x2BC0]
         elif self._ppuctrl.nametable_select == 3:
+            print("nametable B")
             nametable_slice = self._ram.store[0x2C00:0x2FC0]
         else:
             raise Exception("Invalid nametable.")
 
         nametable_tiles = []
-        if self.bg_y < 240:
+        if self.bg_y < 240 and self._ppumask.bg_enable:
             offset_y = (self.bg_y // 8) * 32 if self.bg_y != 0 else 0
             nametable_row = nametable_slice[offset_y:offset_y + 32]
             for tile_num in nametable_row:
@@ -319,9 +306,10 @@ class PPU:
                     self.bg_x = 0
                     break
         self.bg_y += 8
-        nametable_group = pygame.sprite.Group(nametable_tiles)
-        nametable_group.draw(screen)
-        pygame.display.flip()
+        if nametable_tiles:
+            nametable_group = pygame.sprite.Group(nametable_tiles)
+            nametable_group.draw(screen)
+            pygame.display.flip()
 
         if self._ppumask.sprite_enable:
             tiles = []
@@ -331,17 +319,28 @@ class PPU:
                 tile.rect.x = chr.x
                 tile.rect.y = chr.y
                 if chr.y == self.scanline:
+                    tile.image = pygame.transform.flip(
+                        tile.image,
+                        chr.attributes.flip_horizontal,
+                        chr.attributes.flip_vertical
+                    )
+                    # if chr.attributes.priority != 0:
                     tiles.append(tile)
                 else:
                     continue
 
-            sprite_group = pygame.sprite.Group(tiles)
-            sprite_group.draw(screen)
-            pygame.display.flip()
+            if tiles:
+                sprite_group = pygame.sprite.Group(tiles)
+                sprite_group.draw(screen)
+                pygame.display.flip()
 
         self.scanline += 1
 
     def dump(self):
-        print(self._ram.store[0x2000:0x23BF])
-        print(self._ram.store[0x2800:0x2BFF])
-        print(self._oam._oam_storage.store)
+        print(f"NMI: {self._ppuctrl.nmi}")
+        print(f"VBLANK: {self._ppustatus._vblank}")
+        # self._ram.dump()
+        self._oam._oam_storage.dump()
+
+    def dma_transfer(self, page: int, to: BusMember) -> None:
+        return self._ram.dma_transfer(page, to)
