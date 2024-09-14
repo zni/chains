@@ -12,23 +12,20 @@ class PPURAM(RAM):
 
     def _mirror_nametables(self, loc:int) -> int:
         if loc >= 0x3000 and loc <= 0x3EFF:
-            # loc = loc - 0x1000
-            print("mirror")
+            loc = loc - 0x1000
         return loc
 
-    def read_chr(self, page, tile) -> CHRObj:
+    def read_chr(self, page:int, tile:int, plane:int) -> CHRObj:
         address = page << 12
         address |= (tile << 4)
 
         chr = CHRObj()
         plane0 = []
-        for n in range(8):
-            plane0.append(self.store[address | n])
+        plane0.append(self.store[address | plane])
 
         plane1 = []
         address |= 1 << 3
-        for n in range(8):
-            plane1.append(self.store[address | n])
+        plane1.append(self.store[address | plane])
 
         chr = CHRObj()
         pixel_array = pygame.PixelArray(chr.image)
@@ -52,14 +49,14 @@ class PPURAM(RAM):
             y += 1
         return chr
 
-    def read(self, loc) -> int:
+    def read(self, loc: int) -> int:
         try:
-            return self.store[self._mirror_nametables(loc)]
+            return self.store[loc]
         except IndexError as e:
             raise RuntimeError(f"Out of bounds read memory access {loc:04x} max {len(self.store):04x}") from e
 
-    def write(self, loc, data):
+    def write(self, loc:int, data:int):
         try:
-            self.store[self._mirror_nametables(loc % self.size)] = data
+            self.store[loc] = data
         except IndexError as e:
             raise RuntimeError(f"Out of bounds write memory access {loc:04x} max {len(self.store):04x}") from e

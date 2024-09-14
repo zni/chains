@@ -7,7 +7,7 @@ class CHRObj(pygame.sprite.Sprite):
     COLOR2 = Color(150, 150, 150)
     COLOR3 = Color(250, 250, 250)
 
-    def __init__(self, size=(8, 8)):
+    def __init__(self, size=(8, 1)):
         super().__init__()
         self.image = pygame.surface.Surface(size)
         self.rect = self.image.get_rect()

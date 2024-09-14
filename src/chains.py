@@ -23,7 +23,7 @@ def main():
 
     system = System()
     system.load(program)
-    system.start(trace=trace, step=step)
+    system.start(trace=trace)
 
 if __name__ == '__main__':
     try:

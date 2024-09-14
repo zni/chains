@@ -21,7 +21,9 @@ class Stack:
         return self._ram.read(self._sp)
 
     def _decrement_sp(self):
-        self._sp = ((self._sp - 1) & 0xFF) | 0x0100
+        # self._sp = ((self._sp - 1) & 0xFF) | 0x0100
+        self._sp = ((self._sp - 1) % (0x1FF + 1))# | 0x0100
 
     def _increment_sp(self):
-        self._sp = ((self._sp + 1) & 0xFF) | 0x0100
+        #self._sp = ((self._sp + 1) & 0xFF) | 0x0100
+        self._sp = ((self._sp + 1) % (0x1FF + 1))# | 0x0100

@@ -16,3 +16,7 @@ class BusMember(abc.ABC):
     @abc.abstractmethod
     def nmi(self) -> None:
         return
+
+    @abc.abstractmethod
+    def dma(self) -> int:
+        return 0

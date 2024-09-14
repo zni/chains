@@ -12,11 +12,11 @@ class System:
     def __init__(self):
         self._mpu = MPU()
         self._ppu = PPU()
-        self._bus = Bus(self._mpu, self._ppu, self._ppu.mmap)
+        self._bus = Bus(self._mpu, self._ppu, self._ppu.ro_mmap, self._ppu.w_mmap)
         self._mpu.set_bus(self._bus)
         self._ppu.set_bus(self._bus)
 
-    def start(self, trace: bool = False, step: bool = False):
+    def start(self, trace: bool = False, trace_file = None):
         pygame.init()
         flags = pygame.SHOWN | pygame.RESIZABLE | pygame.SCALED
         screen = pygame.display.set_mode((256, 240), flags=flags)
@@ -28,18 +28,17 @@ class System:
                     if event.type == pygame.QUIT:
                         raise EndOfExecution()
 
-                for _ in range(2000):
+                for _ in range(113):
                     try:
-                        self._mpu.execute(trace)
+                        self._mpu.execute(trace, trace_file)
                     except ReturnFromInterrupt:
                         break
 
-                for _ in range(20):
+                for _ in range(1):
                     try:
                         self._ppu.render(screen)
                     except RaisedNMI:
                         break
-
 
         except EndOfExecution:
             self._mpu.dump()
