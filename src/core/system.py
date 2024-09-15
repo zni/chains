@@ -34,7 +34,7 @@ class System:
                     except ReturnFromInterrupt:
                         break
 
-                for _ in range(1):
+                for _ in range(100):
                     try:
                         self._ppu.render(screen)
                     except RaisedNMI:

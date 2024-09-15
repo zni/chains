@@ -349,7 +349,6 @@ class PPU(BusMember):
             self.nmi_triggered = False
             self._ppustatus.sprite_0_hit = 0
 
-
         if self._ppuctrl.nametable_select == 0:
             nametable_slice = self._ram.store[0x2000:0x23C0]
         elif self._ppuctrl.nametable_select == 1:
@@ -363,8 +362,6 @@ class PPU(BusMember):
             nametable_slice = self._ram.store[0x2C00:0x2FC0]
         else:
             raise Exception("Invalid nametable.")
-
-
 
         if self.scanline < 240 and self._ppumask.bg_enable:
             offset_y = (self.scanline // 8) * 32 if self.scanline != 0 else 0
@@ -390,18 +387,17 @@ class PPU(BusMember):
             tiles: List[CHRObj] = []
             for tile in range(64):
                 chr = self._oam._oam_storage.read(tile)
-                tile = self._ram.read_chr(self._ppuctrl.sprite_select, chr.tile_num, (self.scanline % 8))
-                tile.rect.x = chr.x
-                tile.rect.y = chr.y
-                if chr.y == self.scanline:
-                    tile.image = pygame.transform.flip(
-                        tile.image,
-                        chr.attributes.flip_horizontal,
-                        chr.attributes.flip_vertical
-                    )
-                    tiles.append(tile)
-                else:
+                if chr.y <= self.scanline + abs(self.scanline - chr.y) < chr.y + 8:
                     continue
+                tile = self._ram.read_chr(self._ppuctrl.sprite_select, chr.tile_num, ((chr.y + self.scanline) % 8))
+                tile.rect.x = chr.x
+                tile.rect.y = chr.y + ((chr.y + self.scanline) % 8)
+                tile.image = pygame.transform.flip(
+                    tile.image,
+                    chr.attributes.flip_horizontal,
+                    chr.attributes.flip_vertical
+                )
+                tiles.append(tile)
 
             for tile in tiles:
                 screen.blit(tile.image, tile.rect)
