@@ -780,7 +780,7 @@ class MPU(BusMember):
 
     def _jmp(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
-            (_, addr) = self._mode_abs()
+            (_, addr) = self._mode_abs(data_fetch=False)
         elif mode == AddressingMode.IND:
             (_, addr) = self._mode_ind()
         else:
@@ -790,7 +790,7 @@ class MPU(BusMember):
 
     def _jsr(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
-            (data, addr) = self._mode_abs()
+            (_, addr) = self._mode_abs(data_fetch=False)
         else:
             raise IllegalAddressingMode(f"JSR {mode.name}")
 

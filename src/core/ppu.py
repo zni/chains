@@ -154,7 +154,6 @@ class PPUScroll(MemoryMappedIO):
         return 0
 
     def write(self, loc:int, data:int):
-        self.data = data
         # Set X
         if not self.ppu.w:
             self.ppu.t = 0
@@ -167,6 +166,8 @@ class PPUScroll(MemoryMappedIO):
             fine_y = (data & 0x07) << 12
             self.ppu.t |= fine_y | coarse_y
             self.ppu.w = False
+
+        print(f"PPUSCROLL: {self.ppu.t:04x} {data:04x}")
 
 class PPUAddressData(MemoryMappedIO):
     ADDR = 0x2006
@@ -203,21 +204,23 @@ class PPUAddressData(MemoryMappedIO):
     def write(self, loc:int, data:int):
         self.data = data
         if loc == PPUAddressData.ADDR and not self.ppu.w:
-            self.ppu.t |= (data << 8) & 0x3F00
+            self.ppu.t = ((data << 8) & 0x3F00)
             self.ppu.w = True
         elif loc == PPUAddressData.ADDR and self.ppu.w:
             self.ppu.t = (data & 0x00FF) | (self.ppu.t & 0x3F00)
             self.ppu.v = self.ppu.t
             self.ppu.w = False
         elif loc == PPUAddressData.DATA:
-            # print("WRITE PPUDATA")
+            print("WRITE PPUDATA")
+            print(f"\t{self.ppu.v:04x}")
+            print(f"\t{self.data:04x}")
             self._ram.write(self.ppu.v, self.data)
             self.increment_address()
 
     def increment_address(self) -> None:
         if self.ppu._ppuctrl.inc_mode == 0:
             self.ppu.v += 1
-            self.ppu.v &= 0x3FFF
+            self.ppu.v %= 0x3FFF
         else:
             self.ppu.v += 32
             self.ppu.v &= 0x3FFF
@@ -274,7 +277,7 @@ class PPU(BusMember):
         self.ro_mmap = {
             0x2002: self._ppustatus,
             0x2004: self._oam,
-            # 0x2007: self._ppudata,
+            0x2007: self._ppudata,
         }
 
         # Write-only memory map
@@ -337,14 +340,15 @@ class PPU(BusMember):
             self._ppustatus.set_vblank(1)
             self.nmi()
         elif self.scanline > 260:
+            self._ppustatus.set_vblank(0)
             if self._ppumask.rendering_enabled():
                 self.v = self.t
-                pygame.display.flip()
 
+            pygame.display.flip()
             self.scanline = 0
             self.nmi_triggered = False
             self._ppustatus.sprite_0_hit = 0
-            self._ppustatus.set_vblank(0)
+
 
         if self._ppuctrl.nametable_select == 0:
             nametable_slice = self._ram.store[0x2000:0x23C0]
@@ -407,7 +411,7 @@ class PPU(BusMember):
     def dump(self):
         print(f"NMI: {self._ppuctrl.nmi}")
         print(f"VBLANK: {self._ppustatus._vblank}")
-        self._ram.dump()
+        #self._ram.dump()
         self._oam._oam_storage.dump()
 
     def dma_transfer(self, page: int, to: BusMember) -> None:
