@@ -1,4 +1,6 @@
 import time
+import traceback
+
 from typing import Optional, Tuple
 from io import BufferedReader
 
@@ -16,6 +18,7 @@ class MPU(BusMember):
 
     def __init__(self):
         self.trace = False
+        self.step = False
 
         self._pc = ProgramCounter()
         self._a = 0
@@ -56,6 +59,7 @@ class MPU(BusMember):
                 (None, None),
                 (self._ora, AddressingMode.ZPX),
                 (self._asl, AddressingMode.ZPX),
+                (None, None),
                 (self._clc, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ABSY),
                 (None, None),
@@ -138,7 +142,8 @@ class MPU(BusMember):
                 (None, None),
                 (None, None),
                 (self._eor, AddressingMode.ABSX),
-                (self._lsr, AddressingMode.ABSX)
+                (self._lsr, AddressingMode.ABSX),
+                (None, None)
             ],
             #6
             [
@@ -356,14 +361,22 @@ class MPU(BusMember):
         else:
             raise IllegalAddressingMode(f"ADC {mode.name}")
 
-        self._a = self._a + data + self._flags.carry
+        if data is None:
+            raise RuntimeError("ADC data is None")
+
+        if self.trace:
+            print(f"\tpre-acc: {self._a:04x}")
+
+        result = self._a + data + self._flags.carry
 
         self._flags.update_carry(self._a)
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
-        self._flags.update_overflow(self._a)
+        self._flags.update_overflow(result, self._a, data)
 
-        self._a &= 0xFF
+        self._a = result & 0xFF
+        if self.trace:
+            print(f"\tacc: {self._a:04x}")
 
     def _and(self, mode: AddressingMode):
         data = 0
@@ -389,7 +402,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._a = (self._a & data) % 0x100
+        self._a = (self._a & data) & 0xFF
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
 
@@ -423,6 +436,7 @@ class MPU(BusMember):
             self._flags.carry = 1
         else:
             shifted &= 0xFF
+            self._flags.carry = 0
 
         self._flags.update_zero(shifted)
         self._flags.update_sign(shifted)
@@ -432,31 +446,30 @@ class MPU(BusMember):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BCC {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.carry == 0:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
 
     def _bcs(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BCS {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.carry == 1:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
+            if self.trace:
+                print(f"\tbranching to: {self._pc.reg:04x}")
 
     def _beq(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BEQ {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.zero == 1:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
 
     def _bit(self, mode: AddressingMode):
         if mode == mode.ABS:
@@ -479,31 +492,30 @@ class MPU(BusMember):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BMI {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.sign == 1:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
 
     def _bne(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BNE {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.zero == 0:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
+            if self.trace:
+                print(f"\tbranching to: {self._pc.reg:04x}")
 
     def _bpl(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BPL {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.sign == 0:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
 
     def _brk(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -522,21 +534,19 @@ class MPU(BusMember):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BVC {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.overflow == 0:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
 
     def _bvs(self, mode: AddressingMode):
         if mode != AddressingMode.REL:
             raise IllegalAddressingMode(f"BVS {mode.name}")
 
+        displacement = self.bus.read(self._pc.reg)
+        self._pc.advance_pc()
         if self._flags.overflow == 1:
-            displacement = self.bus.read(self._pc.reg)
             self._pc.displace_pc(to_8bit_signed(displacement))
-        else:
-            self._pc.advance_pc()
 
     def _clc(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -585,18 +595,18 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        result = (self._a - data) % 0x100
-        if result == 0:
+        result = (self._a - data)
+        if (result & 0xFF) == 0:
             self._flags.zero = 1
         else:
             self._flags.zero = 0
 
-        if result & 0x80:
+        if (result & 0xFF) & 0x80 == 0x80:
             self._flags.sign = 1
         else:
             self._flags.sign = 0
 
-        if self._a >= data:
+        if (result & 0xFF00) != 0:
             self._flags.carry = 1
         else:
             self._flags.carry = 0
@@ -614,18 +624,19 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        result = (self._x - data) % 0x100
-        if result == 0:
+        result = (self._x - data)
+        print(f"RESULT: {result:04x}")
+        if (result & 0xFF) == 0:
             self._flags.zero = 1
         else:
             self._flags.zero = 0
 
-        if result & 0x80:
+        if result & 0x80 == 0x80:
             self._flags.sign = 1
         else:
             self._flags.sign = 0
 
-        if self._x >= data:
+        if (result & 0xFF00) != 0:
             self._flags.carry = 1
         else:
             self._flags.carry = 0
@@ -643,18 +654,18 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        result = (self._y - data) % 0x100
-        if result == 0:
+        result = (self._y - data)
+        if (result & 0xFF) == 0:
             self._flags.zero = 1
         else:
             self._flags.zero = 0
 
-        if result & 0x80:
+        if (result & 0x80) == 0x80:
             self._flags.sign = 1
         else:
             self._flags.sign = 0
 
-        if self._y >= data:
+        if (result & 0xFF00) != 0:
             self._flags.carry = 1
         else:
             self._flags.carry = 0
@@ -674,7 +685,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        result = (data - 1) % 0x100
+        result = (data - 1) & 0xFF
         self.bus.write(addr, result)
 
         self._flags.update_sign(result)
@@ -684,7 +695,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"DEX {mode.name}")
 
-        self._x = (self._x - 1) % 0x100
+        self._x = (self._x - 1) & 0xFF
 
         if self.trace:
             print(f"\tval: {self._x:02x}", file=self.trace_file)
@@ -696,7 +707,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"DEY {mode.name}")
 
-        self._y = (self._y - 1) % 0x100
+        self._y = (self._y - 1) & 0xFF
 
         if self.trace:
             print(f"\tval: {self._y:02x}", file=self.trace_file)
@@ -727,7 +738,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._a = (self._a ^ data) % 0x100
+        self._a = (self._a ^ data) & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -748,7 +759,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        result = (data + 1) % 0x100
+        result = (data + 1) & 0xFF
         self.bus.write(addr, result)
 
         self._flags.update_sign(result)
@@ -758,7 +769,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INX {mode.name}")
 
-        self._x = (self._x + 1) % 0x100
+        self._x = (self._x + 1) & 0xFF
 
         if self.trace:
             print(f"\tval: {self._x:02x}", file=self.trace_file)
@@ -770,7 +781,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"INY {mode.name}")
 
-        self._y = (self._y + 1) % 0x100
+        self._y = (self._y + 1) & 0xFF
 
         if self.trace:
             print(f"\tval: {self._y:02x}", file=self.trace_file)
@@ -827,7 +838,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._a = data % 0x100
+        self._a = data & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -849,7 +860,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._x = data % 0x100
+        self._x = data & 0xFF
 
         self._flags.update_sign(self._x)
         self._flags.update_zero(self._x)
@@ -871,7 +882,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._y = data % 0x100
+        self._y = data & 0xFF
 
         self._flags.update_sign(self._y)
         self._flags.update_zero(self._y)
@@ -894,15 +905,15 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._flags.update_carry(data, bit7=False)
+        self._flags.update_carry(data, bit_high=False)
         data = data >> 1
         self._flags.update_sign(data)
         self._flags.update_zero(data)
 
         if addr is not None:
-            self.bus.write(addr, data)
+            self.bus.write(addr, data & 0xFF)
         else:
-            self._a = data % 0x100
+            self._a = data & 0xFF
 
     def _nop(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -931,7 +942,7 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._a = (self._a | data) % 0x100
+        self._a = (self._a | data) & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -940,19 +951,19 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PHA {mode.name}")
 
-        self._stack.push(self._a)
+        self._stack.push(self._a & 0xFF)
 
     def _php(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PHP {mode.name}")
 
-        self._stack.push(self._flags.to_int())
+        self._stack.push(self._flags.to_int() & 0xFF)
 
     def _pla(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PLA {mode.name}")
 
-        self._a = self._stack.pop()
+        self._a = self._stack.pop() & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -961,7 +972,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PLP {mode.name}")
 
-        self._flags.update_flags(self._stack.pop())
+        self._flags.update_flags(self._stack.pop() & 0xFF)
 
     def _rol(self, mode: AddressingMode):
         if mode == AddressingMode.ACC:
@@ -982,14 +993,14 @@ class MPU(BusMember):
             raise Exception("data cannot be None")
 
         current_carry = self._flags.carry
+        data = (data << 1)
         self._flags.update_carry(data)
-        data = 0xFF & (data << 1)
         data |= current_carry
 
         if addr is not None:
-            self.bus.write(addr, data)
+            self.bus.write(addr, data & 0xFF)
         else:
-            self._a = data % 0x100
+            self._a = data & 0xFF
 
 
     def _ror(self, mode: AddressingMode):
@@ -1011,14 +1022,14 @@ class MPU(BusMember):
             raise Exception("data cannot be None")
 
         current_carry = self._flags.carry
-        self._flags.update_carry(data, bit7=False)
+        self._flags.update_carry(data, bit_high=False)
         data = 0xFF & (data >> 1)
         data |= (current_carry << 7)
 
         if addr is not None:
-            self.bus.write(addr, data)
+            self.bus.write(addr, data & 0xFF)
         else:
-            self._a = data % 0x100
+            self._a = data & 0xFF
 
     def _rti(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -1064,14 +1075,23 @@ class MPU(BusMember):
         if data is None:
             raise Exception("data cannot be None")
 
-        self._a = self._a - data - self._flags.carry
+        if self.trace:
+            print(f"\tprev val:{self._a:04x}")
+            print(f"\tdata:{data:04x}")
+
+        result = ((self._a - data) - self._flags.carry)
+        if self.trace:
+            print(f"\tresult:{result:04x}")
 
         self._flags.update_sign(self._a)
-        self._flags.update_overflow(self._a)
+        self._flags.update_overflow(result, self._a, data)
         self._flags.update_zero(self._a)
-        self._flags.update_carry(self._a)
+        if result & 0xFF00:
+            self._flags.carry = 1
+        else:
+            self._flags.carry = 0
 
-        self._a &= 0xFF
+        self._a = result & 0xFF
 
     def _sec(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -1095,7 +1115,7 @@ class MPU(BusMember):
         if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs(data_fetch=False)
         elif mode == AddressingMode.ZP:
-            (_, addr) = self._mode_zp()
+            (_, addr) = self._mode_zp(data_fetch=False)
         elif mode == AddressingMode.ABSX:
             (_, addr) = self._mode_absx()
         elif mode == AddressingMode.ABSY:
@@ -1109,37 +1129,54 @@ class MPU(BusMember):
         else:
             raise IllegalAddressingMode(f"STA {mode.name}")
 
-        self.bus.write(addr, self._a)
+        if mode == AddressingMode.ZP:
+            self._ram.store[addr] = self._a & 0xFF
+        else:
+            self.bus.write(addr, self._a & 0xFF)
+
+
+        if self.trace:
+            print(f"\tval: {self._a:04x}")
+
+        # if addr in range(0x50, 0x55):
+        #     input("WATCH")
+
+        # if addr not in self.bus.w_mmap:
+        #     assert (self._ram.store[addr] ==  self._a), f"{addr:04x} {self._ram.store[addr]:04x} != {self._a:04x}"
 
     def _stx(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs(data_fetch=False)
         elif mode == AddressingMode.ZP:
-            (_, addr) = self._mode_zp()
+            (_, addr) = self._mode_zp(data_fetch=False)
         elif mode == AddressingMode.ZPY:
             (_, addr) = self._mode_zpy()
         else:
             raise IllegalAddressingMode(f"STX {mode.name}")
 
-        self.bus.write(addr, self._x)
+        self.bus.write(addr, self._x & 0xFF)
+        # if addr not in self.bus.w_mmap:
+        #     assert (self._ram.store[addr] ==  self._x), f"{addr:04x} {self._ram.store[addr]:04x} != {self._x:04x}"
 
     def _sty(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
             (_, addr) = self._mode_abs(data_fetch=False)
         elif mode == AddressingMode.ZP:
-            (_, addr) = self._mode_zp()
+            (_, addr) = self._mode_zp(data_fetch=False)
         elif mode == AddressingMode.ZPX:
             (_, addr) = self._mode_zpx()
         else:
             raise IllegalAddressingMode(f"STY {mode.name}")
 
-        self.bus.write(addr, self._y)
+        self.bus.write(addr, self._y & 0xFF)
+        # if addr not in self.bus.w_mmap:
+        #     assert (self._ram.store[addr] ==  self._y), f"{addr:04x} {self._ram.store[addr]:04x} != {self._y:04x}"
 
     def _tax(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TAX {mode.name}")
 
-        self._x = self._a % 0x100
+        self._x = self._a & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1148,7 +1185,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TAY {mode.name}")
 
-        self._y = self._a % 0x100
+        self._y = self._a & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1166,7 +1203,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TXA {mode.name}")
 
-        self._a = self._x % 0x100
+        self._a = self._x & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1184,7 +1221,7 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"TYA {mode.name}")
 
-        self._a = self._y % 0x100
+        self._a = self._y & 0xFF
 
         self._flags.update_sign(self._a)
         self._flags.update_zero(self._a)
@@ -1239,13 +1276,17 @@ class MPU(BusMember):
 
         return (data, addr)
 
-    def _mode_zp(self, data_fetch=True):
+    def _mode_zp(self, data_fetch=True) -> Tuple[Optional[int], int]:
         addr = self._zpage_addr_fetch()
-        data = self.bus.read(addr)
+        if data_fetch:
+            data = self.read(addr)
+        else:
+            data = None
 
         if self.trace:
             print("_mode_zp", file=self.trace_file)
-            print(f"\tdata: {data:04x}", file=self.trace_file)
+            if data_fetch:
+                print(f"\tdata: {data:04x}", file=self.trace_file)
             print(f"\taddr: {addr:04x}", file=self.trace_file)
 
         return (data, addr)
@@ -1297,7 +1338,7 @@ class MPU(BusMember):
 
     def _mode_absx(self):
         addr = self._addr_fetch()
-        indexed_addr = (addr + self._x) % 0xFFFF
+        indexed_addr = (addr + self._x)# % 0xFFFF
         data = self.bus.read(indexed_addr)
 
         if self.trace:
@@ -1309,20 +1350,21 @@ class MPU(BusMember):
 
     def _mode_absy(self):
         addr = self._addr_fetch()
-        indexed_addr = (addr + self._y) % 0xFFFF
+        indexed_addr = (addr + (self._y & 0xFF)) & 0xFFFF
         data = self.bus.read(indexed_addr)
 
         if self.trace:
             print("_mode_absy", file=self.trace_file)
             print(f"\tdata: {data:04x}", file=self.trace_file)
             print(f"\taddr: {indexed_addr:04x}", file=self.trace_file)
+            print(f"\t   y: {self._y:04x}")
 
         return (data, indexed_addr)
 
     def _mode_zpx(self):
         addr = self._zpage_addr_fetch()
         indexed_addr = (addr + self._x) & 0xFFFF
-        data = self.bus.read(indexed_addr)
+        data = self.read(indexed_addr)
 
         if self.trace:
             print("_mode_zpx", file=self.trace_file)
@@ -1333,7 +1375,7 @@ class MPU(BusMember):
     def _mode_zpy(self):
         addr = self._zpage_addr_fetch()
         indexed_addr = (addr + self._y) & 0xFFFF
-        data = self.bus.read(indexed_addr)
+        data = self.read(indexed_addr)
 
         if self.trace:
             print("_mode_zpy", file=self.trace_file)
@@ -1372,6 +1414,9 @@ class MPU(BusMember):
         self.trace_file = trace_file
 
         instruction_addr = self._pc.reg
+        if instruction_addr == 0xc188:
+            input("BREAK")
+            # self.step = True
         instruction = self._data_fetch()
 
         table = (instruction & 0xF0) >> 4
@@ -1388,7 +1433,8 @@ class MPU(BusMember):
             print(f"{instruction_addr:04x} {instruction:02x} {op.__qualname__}", file=self.trace_file)
 
         op(addr_mode)
-
+        if self.step:
+            input("CONT:")
         end = time.time()
         return end - start
 
@@ -1429,10 +1475,15 @@ class MPU(BusMember):
             print("NMI")
 
     def read(self, loc:int) -> int:
-        return self._ram.read(loc)
+        return self._ram.store[loc % 0xFFFF]
 
     def write(self, loc:int, data:int) -> None:
-        self._ram.write(loc, data)
+        # if 0x50 <= loc and loc <= 0x54:
+        #     for line in traceback.format_stack():
+        #         print(line.strip())
+        #     input()
+
+        self._ram.store[loc % 0xFFFF] = data
 
     def dma_transfer(self, page: int, to: BusMember) -> None:
         self._ram.dma_transfer(page, to)
