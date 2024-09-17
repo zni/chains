@@ -12,10 +12,12 @@ class FlagRegister:
         self.interrupt = 0
         self.zero = 0
         self.carry = 0
+        self.unused = 0
 
     def update_flags(self, val):
         self.sign = (0x80 & val) >> 7
         self.overflow = (0x40 & val) >> 6
+        self.unused = (0x20 & val) >> 5
         self.break_ = (0x10 & val) >> 4
         self.decimal = (0x08 & val) >> 3
         self.interrupt = (0x04 & val) >> 2
@@ -23,7 +25,7 @@ class FlagRegister:
         self.carry = 0x01 & val
 
     def update_sign(self, val):
-        if val & 0x80:
+        if (val & 0x80) == 0x80:
             self.sign = 1
         else:
             self.sign = 0
@@ -34,22 +36,20 @@ class FlagRegister:
         else:
             self.zero = 0
 
-    def update_carry(self, val, bit7=True):
-        if bit7:
-            if val & 0x80:
+    def update_carry(self, val, bit_high=True):
+        if bit_high:
+            if (val & 0xFF00):
                 self.carry = 1
             else:
                 self.carry = 0
         else:
-            if val & 0x01:
+            if (val & 0x01) == 0x01:
                 self.carry = 1
             else:
                 self.carry = 0
 
-    def update_overflow(self, val):
-        signed = to_signed(val)
-
-        if signed >= 127 or signed <= -128:
+    def update_overflow(self, result, acc, mem):
+        if (result ^ mem) & (result ^ acc) & 0x0080 == 0x80:
             self.overflow = 1
         else:
             self.overflow = 0
@@ -58,7 +58,7 @@ class FlagRegister:
         b = bitarray.bitarray([
             self.sign,
             self.overflow,
-            0,
+            self.unused,
             self.break_,
             self.decimal,
             self.interrupt,

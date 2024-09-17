@@ -32,9 +32,10 @@ class System:
                     try:
                         self._mpu.execute(trace, trace_file)
                     except ReturnFromInterrupt:
+                        print("END INTERRUPT")
                         break
 
-                for _ in range(100):
+                for _ in range(50):
                     try:
                         self._ppu.render(screen)
                     except RaisedNMI:

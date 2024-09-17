@@ -1,14 +1,16 @@
+import random
 import string
+import traceback
 
 class RAM:
     def __init__(self, size: int = 0xFFFF):
         self.size = size
         self.store = []
         for _ in range(size + 1):
-            self.store.append(0x0)
+            self.store.append(0)
 
     def _mirror_map(self, loc) -> int:
-        if loc >= 0x0000 and loc <= 0x07FFF:
+        if loc >= 0x0000 and loc <= 0x07FF:
             return loc
         elif loc >= 0x0800 and loc <= 0x0FFF:
             return loc - 0x0800
@@ -22,17 +24,17 @@ class RAM:
     def set_size(self, size: int = 0xFFFF):
         self.store = []
         for _ in range(size + 1):
-            self.store.append(0x0)
+            self.store.append(0)
 
     def read(self, loc) -> int:
         try:
-            return self.store[self._mirror_map(loc & 0xFFFF)]
+            return self.store[loc]
         except IndexError as e:
             raise RuntimeError(f"Out of bounds read memory access {loc:04x} max {len(self.store):04x}") from e
 
     def write(self, loc, data):
         try:
-            self.store[self._mirror_map(loc & 0xFFFF)] = data
+            self.store[loc] = data
         except IndexError as e:
             raise RuntimeError(f"Out of bounds write memory access {loc:04x} max {len(self.store):04x}") from e
 

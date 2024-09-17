@@ -205,25 +205,29 @@ class PPUAddressData(MemoryMappedIO):
         self.data = data
         if loc == PPUAddressData.ADDR and not self.ppu.w:
             self.ppu.t = ((data << 8) & 0x3F00)
+            # print("WRITE PPUADDR")
+            # print(f"\t1st: {self.ppu.t:04x}")
             self.ppu.w = True
         elif loc == PPUAddressData.ADDR and self.ppu.w:
-            self.ppu.t = (data & 0x00FF) | (self.ppu.t & 0x3F00)
+            self.ppu.t = (data & 0x00FF) | (self.ppu.t)
             self.ppu.v = self.ppu.t
+            # print("WRITE PPUADDR")
+            # print(f"\t2nd: {self.ppu.t:04x}")
             self.ppu.w = False
         elif loc == PPUAddressData.DATA:
-            print("WRITE PPUDATA")
-            print(f"\t{self.ppu.v:04x}")
-            print(f"\t{self.data:04x}")
+            # print("WRITE PPUDATA")
+            # print(f"\t{self.ppu.v:04x}")
+            # print(f"\t{self.data:04x}")
             self._ram.write(self.ppu.v, self.data)
             self.increment_address()
 
     def increment_address(self) -> None:
         if self.ppu._ppuctrl.inc_mode == 0:
             self.ppu.v += 1
-            self.ppu.v %= 0x3FFF
+            # self.ppu.v %= 0x3FFF
         else:
             self.ppu.v += 32
-            self.ppu.v &= 0x3FFF
+            #self.ppu.v &= 0x3FFF
 
     def increment_coarse_address(self) -> None:
         self.coarse_x_inc()
@@ -329,6 +333,7 @@ class PPU(BusMember):
         if self._ppustatus.vblank and self._ppuctrl.nmi and not self.nmi_triggered:
             self.nmi_triggered = True
             self._bus.nmi()
+            print("RAISED NMI")
             raise RaisedNMI()
 
     def dma(self):
@@ -348,6 +353,10 @@ class PPU(BusMember):
             self.scanline = 0
             self.nmi_triggered = False
             self._ppustatus.sprite_0_hit = 0
+
+        if not self._ppumask.rendering_enabled():
+            self.scanline += 1
+            return
 
         if self._ppuctrl.nametable_select == 0:
             nametable_slice = self._ram.store[0x2000:0x23C0]
@@ -375,9 +384,9 @@ class PPU(BusMember):
 
                 nametable_tiles.append(tile)
                 x_pos += 8
-                self._ppudata.coarse_x_inc()
+                # self._ppudata.coarse_x_inc()
                 if x_pos >= 255:
-                    self._ppudata.coarse_y_inc()
+                    # self._ppudata.coarse_y_inc()
                     break
 
             for nametable_tile in nametable_tiles:

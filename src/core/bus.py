@@ -13,10 +13,6 @@ class Bus:
         self.w_mmap = w_mmap
 
     def read(self, loc:int) -> int:
-        if loc == 0x2007:
-            for line in traceback.format_stack():
-                print(line.strip())
-            input()
         loc = self._mirror_map_ppu(loc)
 
         if loc in self.ro_mmap:

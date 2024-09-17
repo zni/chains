@@ -1,3 +1,5 @@
+import traceback
+
 import pygame
 
 from bitarray.util import int2ba
@@ -8,7 +10,6 @@ from chr.chr_obj import CHRObj
 class PPURAM(RAM):
     def __init__(self, size: int = 0x3FFF):
         super().__init__(size)
-        self.surface = None
 
     def _mirror_nametables(self, loc:int) -> int:
         if loc >= 0x3000 and loc <= 0x3EFF:

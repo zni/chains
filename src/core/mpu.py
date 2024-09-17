@@ -957,7 +957,11 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"PHP {mode.name}")
 
+        self._flags.break_ = 1
+        self._flags.unused = 1
         self._stack.push(self._flags.to_int() & 0xFF)
+        self._flags.break_ = 0
+        self._flags.unused = 0
 
     def _pla(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
@@ -1414,9 +1418,6 @@ class MPU(BusMember):
         self.trace_file = trace_file
 
         instruction_addr = self._pc.reg
-        if instruction_addr == 0xc188:
-            input("BREAK")
-            # self.step = True
         instruction = self._data_fetch()
 
         table = (instruction & 0xF0) >> 4
