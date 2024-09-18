@@ -1,7 +1,12 @@
 import pygame
 
 from chr.tile import Tile
-from exc.core import EndOfExecution, RaisedNMI, ReturnFromInterrupt
+from exc.core import (
+    EndOfExecution,
+    RaisedNMI,
+    ReturnFromInterrupt,
+    IllegalAddressingMode
+)
 from core.bus import Bus
 from core.mpu import MPU
 from core.ppu import PPU
@@ -47,6 +52,9 @@ class System:
         except KeyboardInterrupt:
             self._mpu.dump()
             self._ppu.dump()
+        except IllegalAddressingMode as e:
+             self._mpu.dump()
+             raise e
         except Exception as e:
             raise e
         finally:
