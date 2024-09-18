@@ -37,305 +37,305 @@ class MPU(BusMember):
             [
                 (self._brk, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ABSIX),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ZP),
                 (self._asl, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._php, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.IMM),
                 (self._asl, AddressingMode.ACC),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ABS),
                 (self._asl, AddressingMode.ABS),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #1
             [
                 (self._bpl, AddressingMode.REL),
                 (self._ora, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ZPX),
                 (self._asl, AddressingMode.ZPX),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._clc, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ABSY),
                 (self._nop, AddressingMode.IMPLIED),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ABSX),
                 (self._asl, AddressingMode.ABSX),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #2
             [
                 (self._jsr, AddressingMode.ABS),
                 (self._and, AddressingMode.ABSIX),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._bit, AddressingMode.ZP),
                 (self._and, AddressingMode.ZP),
                 (self._rol, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._plp, AddressingMode.IMPLIED),
                 (self._and, AddressingMode.IMM),
                 (self._rol, AddressingMode.ACC),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._bit, AddressingMode.ABS),
                 (self._and, AddressingMode.ABS),
                 (self._rol, AddressingMode.ABS),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #3
             [
                 (self._bmi, AddressingMode.REL),
                 (self._and, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._and, AddressingMode.ZPX),
                 (self._rol, AddressingMode.ZPX),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sec, AddressingMode.IMPLIED),
                 (self._and, AddressingMode.ABSY),
                 (self._nop, AddressingMode.IMPLIED),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._and, AddressingMode.ABSX),
                 (self._rol, AddressingMode.ABSX),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #4
             [
                 (self._rti, AddressingMode.IMPLIED),
                 (self._eor, AddressingMode.ABSIX),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._eor, AddressingMode.ZP),
                 (self._lsr, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._pha, AddressingMode.IMPLIED),
                 (self._eor, AddressingMode.IMM),
                 (self._lsr, AddressingMode.ACC),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._jmp, AddressingMode.ABS),
                 (self._eor, AddressingMode.ABS),
                 (self._lsr, AddressingMode.ABS),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #5
             [
                 (self._bvc, AddressingMode.REL),
                 (self._eor, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._eor, AddressingMode.ZPX),
                 (self._lsr, AddressingMode.ZPX),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cli, AddressingMode.IMPLIED),
                 (self._eor, AddressingMode.ABSY),
                 (self._nop, AddressingMode.IMPLIED),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._eor, AddressingMode.ABSX),
                 (self._lsr, AddressingMode.ABSX),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #6
             [
                 (self._rts, AddressingMode.IMPLIED),
                 (self._adc, AddressingMode.ABSIX),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._adc, AddressingMode.ZP),
                 (self._ror, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._pla, AddressingMode.IMPLIED),
                 (self._adc, AddressingMode.IMM),
                 (self._ror, AddressingMode.ACC),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._jmp, AddressingMode.IND),
                 (self._adc, AddressingMode.ABS),
                 (self._ror, AddressingMode.ABS),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
             ],
             #7
             [
                 (self._bvs, AddressingMode.REL),
                 (self._adc, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._adc, AddressingMode.ZPX),
                 (self._ror, AddressingMode.ZPX),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sei, AddressingMode.IMPLIED),
                 (self._adc, AddressingMode.ABSY),
                 (self._nop, AddressingMode.IMPLIED),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._adc, AddressingMode.ABSX),
                 (self._ror, AddressingMode.ABSX),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #8
             [
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sta, AddressingMode.ZPIX),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sty, AddressingMode.ZP),
                 (self._sta, AddressingMode.ZP),
                 (self._stx, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._dey, AddressingMode.IMPLIED),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._txa, AddressingMode.IMPLIED),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sty, AddressingMode.ABS),
                 (self._sta, AddressingMode.ABS),
                 (self._stx, AddressingMode.ABS),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #9
             [
                 (self._bcc, AddressingMode.REL),
                 (self._sta, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sty, AddressingMode.ZPX),
                 (self._sta, AddressingMode.ZPX),
                 (self._stx, AddressingMode.ZPY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._tya, AddressingMode.IMPLIED),
                 (self._sta, AddressingMode.ABSY),
                 (self._txs, AddressingMode.IMPLIED),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sta, AddressingMode.ABSX),
-                (None, None),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #A
             [
                 (self._ldy, AddressingMode.IMM),
                 (self._lda, AddressingMode.ZPIX),
                 (self._ldx, AddressingMode.IMM),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ldy, AddressingMode.ZP),
                 (self._lda, AddressingMode.ZP),
                 (self._ldx, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._tay, AddressingMode.IMPLIED),
                 (self._lda, AddressingMode.IMM),
                 (self._tax, AddressingMode.IMPLIED),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ldy, AddressingMode.ABS),
                 (self._lda, AddressingMode.ABS),
                 (self._ldx, AddressingMode.ABS),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #B
             [
                 (self._bcs, AddressingMode.REL),
                 (self._lda, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ldy, AddressingMode.ZPX),
                 (self._lda, AddressingMode.ZPX),
                 (self._ldx, AddressingMode.ZPY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._clv, AddressingMode.IMPLIED),
                 (self._lda, AddressingMode.ABSY),
                 (self._tsx, AddressingMode.IMPLIED),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._ldy, AddressingMode.ABSX),
                 (self._lda, AddressingMode.ABSX),
                 (self._ldx, AddressingMode.ABSY),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #C
             [
                 (self._cpy, AddressingMode.IMM),
                 (self._cmp, AddressingMode.ZPIX),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cpy, AddressingMode.ZP),
                 (self._cmp, AddressingMode.ZP),
                 (self._dec, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._iny, AddressingMode.IMPLIED),
                 (self._cmp, AddressingMode.IMM),
                 (self._dex, AddressingMode.IMPLIED),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cpy, AddressingMode.ABS),
                 (self._cmp, AddressingMode.ABS),
                 (self._dec, AddressingMode.ABS),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #D
             [
                 (self._bne, AddressingMode.REL),
                 (self._cmp, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cmp, AddressingMode.ZPX),
                 (self._dec, AddressingMode.ZPX),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cld, AddressingMode.IMPLIED),
                 (self._cmp, AddressingMode.ABSY),
                 (self._nop, AddressingMode.IMPLIED),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cmp, AddressingMode.ABSX),
                 (self._dec, AddressingMode.ABSX),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #E
             [
                 (self._cpx, AddressingMode.IMM),
                 (self._sbc, AddressingMode.ZPIX),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cpx, AddressingMode.ZP),
                 (self._sbc, AddressingMode.ZP),
                 (self._inc, AddressingMode.ZP),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._inx, AddressingMode.IMPLIED),
                 (self._sbc, AddressingMode.IMM),
                 (self._nop, AddressingMode.IMPLIED),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._cpx, AddressingMode.ABS),
                 (self._sbc, AddressingMode.ABS),
                 (self._inc, AddressingMode.ABS),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ],
             #F
             [
                 (self._beq, AddressingMode.REL),
                 (self._sbc, AddressingMode.ZPIY),
-                (None, None),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sbc, AddressingMode.ZPX),
                 (self._inc, AddressingMode.ZPX),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sed, AddressingMode.IMPLIED),
                 (self._sbc, AddressingMode.ABSY),
                 (self._nop, AddressingMode.IMPLIED),
-                (None, None),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
+                (self._nop, AddressingMode.IMPLIED),
                 (self._sbc, AddressingMode.ABSX),
                 (self._inc, AddressingMode.ABSX),
-                (None, None)
+                (self._nop, AddressingMode.IMPLIED)
             ]
         ]
 
@@ -625,7 +625,6 @@ class MPU(BusMember):
             raise Exception("data cannot be None")
 
         result = (self._x - data)
-        print(f"RESULT: {result:04x}")
         if (result & 0xFF) == 0:
             self._flags.zero = 1
         else:
@@ -647,7 +646,7 @@ class MPU(BusMember):
         elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
         elif mode == AddressingMode.IMM:
-            data = self._data_fetch()
+            (data, _) = self._mode_imm()
         else:
             raise IllegalAddressingMode(f"CPX {mode.name}")
 
@@ -1054,8 +1053,6 @@ class MPU(BusMember):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"RTS {mode.name}")
 
-        self.trace = True
-
         pc_lo = self._stack.pop()
         self._pc.set_pc_lo(pc_lo)
         pc_hi = self._stack.pop()
@@ -1086,7 +1083,7 @@ class MPU(BusMember):
             raise IllegalAddressingMode(f"SBC {mode.name}")
 
         if data is None:
-            raise Exception("data cannot be None")
+            raise Exception("SBC data cannot be None")
 
         if self.trace:
             print(f"\tprev val:{self._a:04x}")
@@ -1096,10 +1093,10 @@ class MPU(BusMember):
         if self.trace:
             print(f"\tresult:{result:04x}")
 
-        self._flags.update_sign(self._a)
+        self._flags.update_sign(result)
         self._flags.update_overflow(result, self._a, data)
-        self._flags.update_zero(self._a)
-        if result & 0xFF00:
+        self._flags.update_zero(result)
+        if result & 0xFF00 != 0:
             self._flags.carry = 1
         else:
             self._flags.carry = 0
