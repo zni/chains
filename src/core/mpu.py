@@ -29,6 +29,8 @@ class MPU(BusMember):
         self._stack = Stack(self._ram)
         self.bus: Bus
 
+        self._instruction_count = 0
+
         # https://en.wikipedia.org/wiki/MOS_Technology_6502#Instruction_table
         self._lookup_table = [
             #0
@@ -62,7 +64,7 @@ class MPU(BusMember):
                 (None, None),
                 (self._clc, AddressingMode.IMPLIED),
                 (self._ora, AddressingMode.ABSY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (None, None),
                 (None, None),
                 (self._ora, AddressingMode.ABSX),
@@ -100,7 +102,7 @@ class MPU(BusMember):
                 (None, None),
                 (self._sec, AddressingMode.IMPLIED),
                 (self._and, AddressingMode.ABSY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (None, None),
                 (None, None),
                 (self._and, AddressingMode.ABSX),
@@ -138,7 +140,7 @@ class MPU(BusMember):
                 (None, None),
                 (self._cli, AddressingMode.IMPLIED),
                 (self._eor, AddressingMode.ABSY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (None, None),
                 (None, None),
                 (self._eor, AddressingMode.ABSX),
@@ -176,7 +178,7 @@ class MPU(BusMember):
                 (None, None),
                 (self._sei, AddressingMode.IMPLIED),
                 (self._adc, AddressingMode.ABSY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (None, None),
                 (None, None),
                 (self._adc, AddressingMode.ABSX),
@@ -290,7 +292,7 @@ class MPU(BusMember):
                 (None, None),
                 (self._cld, AddressingMode.IMPLIED),
                 (self._cmp, AddressingMode.ABSY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (None, None),
                 (None, None),
                 (self._cmp, AddressingMode.ABSX),
@@ -328,7 +330,7 @@ class MPU(BusMember):
                 (None, None),
                 (self._sed, AddressingMode.IMPLIED),
                 (self._sbc, AddressingMode.ABSY),
-                (None, None),
+                (self._nop, AddressingMode.IMPLIED),
                 (None, None),
                 (None, None),
                 (self._sbc, AddressingMode.ABSX),
@@ -400,7 +402,7 @@ class MPU(BusMember):
             raise IllegalAddressingMode(f"AND {mode.name}")
 
         if data is None:
-            raise Exception("data cannot be None")
+            raise Exception("AND data cannot be None")
 
         self._a = (self._a & data) & 0xFF
         self._flags.update_sign(self._a)
@@ -431,13 +433,11 @@ class MPU(BusMember):
 
     def __shift_left(self, data):
         shifted = data << 1
-        if 0x100 & shifted:
-            shifted &= 0xFF
+        if (0xFF00 & shifted):
             self._flags.carry = 1
         else:
-            shifted &= 0xFF
             self._flags.carry = 0
-
+        shifted &= 0xFF
         self._flags.update_zero(shifted)
         self._flags.update_sign(shifted)
         return shifted
@@ -485,7 +485,7 @@ class MPU(BusMember):
         self._flags.overflow = (data & 0x40) >> 6
         self._flags.sign = (data & 0x80) >> 7
 
-        result = self._a & data
+        result = (self._a & data) & 0xFF
         self._flags.update_zero(result)
 
     def _bmi(self, mode: AddressingMode):
@@ -815,13 +815,15 @@ class MPU(BusMember):
         self._stack.push(self._pc.pc_lo())
         self._pc.reg = addr
 
+        self.trace = False
+
     def _lda(self, mode: AddressingMode):
         if mode == AddressingMode.ABS:
             (data, _) = self._mode_abs()
         elif mode == AddressingMode.ZP:
             (data, _) = self._mode_zp()
         elif mode == AddressingMode.IMM:
-            data = self._data_fetch()
+            (data, _) = self._mode_imm()
         elif mode == AddressingMode.ABSX:
             (data, _) = self._mode_absx()
         elif mode == AddressingMode.ABSY:
@@ -998,8 +1000,10 @@ class MPU(BusMember):
 
         current_carry = self._flags.carry
         data = (data << 1)
-        self._flags.update_carry(data)
         data |= current_carry
+        self._flags.update_carry(data)
+        self._flags.update_zero(data)
+        self._flags.update_sign(data)
 
         if addr is not None:
             self.bus.write(addr, data & 0xFF)
@@ -1026,9 +1030,11 @@ class MPU(BusMember):
             raise Exception("data cannot be None")
 
         current_carry = self._flags.carry
+        data = (0xFF & data) >> 1
+        data |= (current_carry & 0x01) << 7
         self._flags.update_carry(data, bit_high=False)
-        data = 0xFF & (data >> 1)
-        data |= (current_carry << 7)
+        self._flags.update_zero(data)
+        self._flags.update_sign(data)
 
         if addr is not None:
             self.bus.write(addr, data & 0xFF)
@@ -1047,6 +1053,9 @@ class MPU(BusMember):
     def _rts(self, mode: AddressingMode):
         if mode != AddressingMode.IMPLIED:
             raise IllegalAddressingMode(f"RTS {mode.name}")
+
+        self.trace = True
+
         pc_lo = self._stack.pop()
         self._pc.set_pc_lo(pc_lo)
         pc_hi = self._stack.pop()
@@ -1367,7 +1376,7 @@ class MPU(BusMember):
 
     def _mode_zpx(self):
         addr = self._zpage_addr_fetch()
-        indexed_addr = (addr + self._x) & 0xFFFF
+        indexed_addr = (addr + self._x) & 0xFF
         data = self.read(indexed_addr)
 
         if self.trace:
@@ -1378,7 +1387,7 @@ class MPU(BusMember):
 
     def _mode_zpy(self):
         addr = self._zpage_addr_fetch()
-        indexed_addr = (addr + self._y) & 0xFFFF
+        indexed_addr = (addr + self._y) & 0xFF
         data = self.read(indexed_addr)
 
         if self.trace:
@@ -1405,6 +1414,7 @@ class MPU(BusMember):
 
     def dump(self):
         with open("bits/dump.out", "w") as f:
+            print(f" I: {self._instruction_count}", file=f)
             print(f" P: 0b{self._flags.to_int():08b}", file=f)
             print(f"PC: 0x{self._pc.reg:04x}", file=f)
             print(f" A: 0x{self._a:04x}", file=f)
@@ -1434,8 +1444,7 @@ class MPU(BusMember):
             print(f"{instruction_addr:04x} {instruction:02x} {op.__qualname__}", file=self.trace_file)
 
         op(addr_mode)
-        if self.step:
-            input("CONT:")
+        self._instruction_count += 1
         end = time.time()
         return end - start
 
@@ -1479,11 +1488,6 @@ class MPU(BusMember):
         return self._ram.store[loc % 0xFFFF]
 
     def write(self, loc:int, data:int) -> None:
-        # if 0x50 <= loc and loc <= 0x54:
-        #     for line in traceback.format_stack():
-        #         print(line.strip())
-        #     input()
-
         self._ram.store[loc % 0xFFFF] = data
 
     def dma_transfer(self, page: int, to: BusMember) -> None:
